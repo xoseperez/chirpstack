@@ -783,7 +783,10 @@ pub fn run() {
 [roaming]
 
   # Resolve NetID domain suffix.
-  resolve_net_id_domain_suffix="{{ backend_interfaces.resolve_net_id_domain_suffix }}"
+  resolve_net_id_domain_suffix="{{ roaming.resolve_net_id_domain_suffix }}"
+
+  # Try roaming if no local device-session found first
+  check_local_session_first={{ roaming.check_local_session_first }}
 
   # Per server roaming configuration (this can be repeated).
   # Example:

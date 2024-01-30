@@ -111,8 +111,25 @@ impl Data {
             device_gateway_rx_info: None,
         };
 
-        ctx.handle_passive_roaming_device().await?;
-        ctx.get_device_session().await?;
+        if roaming::check_local_session_first() {
+
+            match ctx.get_device_session().await {
+                Ok(_) => {},
+                Err(e) => {
+                    trace!("Trying roaming now");
+                    ctx.handle_passive_roaming_device().await?;
+                    return Err(anyhow::Error::new(e).context("Get device-session"));
+                },
+            };     
+            
+
+        } else {
+
+            ctx.handle_passive_roaming_device().await?;
+            ctx.get_device_session().await?;
+
+        }
+
         ctx.get_device_data().await?;
         ctx.check_roaming_allowed()?;
 

@@ -160,6 +160,11 @@ pub fn is_enabled() -> bool {
     conf.roaming.default.enabled || !conf.roaming.servers.is_empty()
 }
 
+pub fn check_local_session_first() -> bool {
+    let conf = config::get();
+    conf.roaming.check_local_session_first
+}
+
 pub fn is_roaming_dev_addr(dev_addr: DevAddr) -> bool {
     let conf = config::get();
 

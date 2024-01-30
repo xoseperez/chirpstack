@@ -465,6 +465,7 @@ pub struct JoinServerServer {
 #[serde(default)]
 pub struct Roaming {
     pub resolve_net_id_domain_suffix: String,
+    pub check_local_session_first: bool,
     pub servers: Vec<RoamingServer>,
     pub default: RoamingServerDefault,
 }
