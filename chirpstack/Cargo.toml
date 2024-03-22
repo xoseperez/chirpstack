@@ -11,7 +11,7 @@ license = "MIT"
 
 [dependencies]
 # CLI interface
-clap = { version = "4.4", features = ["derive"] }
+clap = { version = "4.5", features = ["derive"] }
 
 # Configuration
 serde = { version = "1.0", features = ["derive", "rc"] }
@@ -19,11 +19,11 @@ serde_yaml = "0.9"
 serde_json = "1.0"
 serde_urlencoded = "0.7"
 humantime-serde = "1.1"
-toml = "0.7"
-handlebars = "4.4"
+toml = "0.8"
+handlebars = "5.1"
 
 # Database
-validator = "0.16"
+email_address = "0.2"
 diesel = { version = "2.1", features = [
 	"chrono",
 	"uuid",
@@ -35,9 +35,9 @@ diesel = { version = "2.1", features = [
 diesel_migrations = { version = "2.1" }
 diesel-async = { version = "0.4", features = ["deadpool", "postgres", "async-connection-wrapper"] }
 tokio-postgres = "0.7"
-tokio-postgres-rustls = "0.10.0"
+tokio-postgres-rustls = "0.11"
 bigdecimal = "0.4"
-redis = { version = "0.24", features = [ "tls-rustls", "tokio-rustls-comp"] }
+redis = { version = "0.25.2", features = [ "tls-rustls", "tokio-rustls-comp"] }
 deadpool-redis = { version = "0.14", features = ["cluster"] }
 
 # Logging
@@ -65,17 +65,17 @@ hmac = "0.12"
 sha2 = "0.10"
 urlencoding = "2.1"
 geohash = "0.13"
-gcp_auth = "0.9"
+gcp_auth = "0.11"
 lapin = "2.3"
 tokio-executor-trait = "2.1"
 tokio-reactor-trait = "1.1"
 rdkafka = { version = "0.36", default-features = false, features = ["tokio", "cmake-build"] }
 
 # gRPC and Protobuf
-tonic = "0.10"
-tonic-web = "0.10"
-tonic-reflection = "0.10"
-tokio = { version = "1.35", features = ["macros", "rt-multi-thread"] }
+tonic = "0.11"
+tonic-web = "0.11"
+tonic-reflection = "0.11"
+tokio = { version = "1.36", features = ["macros", "rt-multi-thread"] }
 tokio-stream = "0.1"
 prost-types = "0.12"
 prost = "0.12"
@@ -89,7 +89,7 @@ futures = "0.3"
 futures-util = "0.3"
 http = "0.2"
 http-body = "0.4"
-rust-embed = "8.1"
+rust-embed = "8.3"
 mime_guess = "2.0"
 tower-http = { version = "0.4", features = ["trace", "auth"] }
 
@@ -101,20 +101,20 @@ anyhow = "1.0"
 pbkdf2 = { version = "0.12", features = ["simple"] }
 rand_core = { version = "0.6", features = ["std"] }
 jsonwebtoken = "9.2"
-rustls = "0.21"
-rustls-native-certs = "0.6"
-rustls-pemfile = "1.0"
+rustls = "0.22"
+rustls-native-certs = "0.7"
+rustls-pemfile = "2.1"
 rsa = "0.9"
 rcgen = { version = "0.12", features = [ "x509-parser" ] }
-openidconnect = { version = "3.3", features = ["accept-rfc3339-timestamps"] }
+openidconnect = { version = "3.5", features = ["accept-rfc3339-timestamps"] }
 oauth2 = "4.4"
 
 # MQTT
-rumqttc = { version = "0.23", features = ["url"] }
+rumqttc = { version = "0.24", features = ["url"] }
 hex = "0.4"
 
 # Codecs
-rquickjs = { version = "0.3", features = [
+rquickjs = { version = "0.5", features = [
 	"bindgen",
 	"loader",
 	"array-buffer",
@@ -123,22 +123,22 @@ rquickjs = { version = "0.3", features = [
 
 # Misc
 lazy_static = "1.4"
-uuid = { version = "1.4", features = ["v4", "serde"] }
+uuid = { version = "1.8", features = ["v4", "serde"] }
 chrono = "0.4"
 async-trait = "0.1"
 aes = "0.8"
 rand = "0.8"
-base64 = "0.21"
+base64 = "0.22"
 async-recursion = "1.0"
-regex = "1.9"
+regex = "1.10"
 petgraph = "0.6"
 prometheus-client = "0.22"
 pin-project = "1.1"
 
 # Development and testing
 [dev-dependencies]
-httpmock = "0.7.0-rc.1"
-bytes = "1.4"
+httpmock = "0.7.0"
+bytes = "1.5"
 dotenv = "0.15"
 
 [features]
