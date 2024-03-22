@@ -113,7 +113,7 @@ impl Data {
 
         if roaming::check_local_session_first() {
 
-            match ctx.get_device_session().await {
+            match ctx.get_device_for_phy_payload().await {
                 Ok(_) => {},
                 Err(e) => {
                     trace!("Trying roaming now");
