@@ -112,22 +112,17 @@ impl Data {
         };
 
         if roaming::check_local_session_first() {
-
             match ctx.get_device_for_phy_payload().await {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => {
                     trace!("Trying roaming now");
                     ctx.handle_passive_roaming_device().await?;
                     return Err(anyhow::Error::new(e).context("Get device-session"));
-                },
-            };     
-            
-
+                }
+            };
         } else {
-
             ctx.handle_passive_roaming_device().await?;
             ctx.get_device_for_phy_payload().await?;
-
         }
 
         ctx.get_device_data().await?;
