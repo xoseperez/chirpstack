@@ -4,15 +4,11 @@ use anyhow::{Context, Result};
 use rcgen::{
     Certificate, CertificateParams, DnType, ExtendedKeyUsagePurpose, KeyPair, KeyUsagePurpose,
 };
-use rsa::{
-    pkcs1::DecodeRsaPrivateKey,
-    pkcs8::{EncodePrivateKey, LineEnding},
-    RsaPrivateKey,
-};
 use tokio::fs;
 use uuid::Uuid;
 
 use crate::config;
+use crate::helpers::tls::private_key_to_pkcs8;
 use lrwn::EUI64;
 
 fn gen_client_cert(id: &str, not_before: SystemTime, not_after: SystemTime) -> Result<Certificate> {
@@ -96,14 +92,4 @@ pub async fn client_cert_for_application_id(
         app_cert.serialize_pem_with_signer(&ca_cert)?,
         app_cert.serialize_private_key_pem(),
     ))
-}
-
-fn private_key_to_pkcs8(pem: &str) -> Result<String> {
-    if pem.contains("RSA PRIVATE KEY") {
-        let pkey = RsaPrivateKey::from_pkcs1_pem(pem).context("Read RSA PKCS#1")?;
-        let pkcs8_pem = pkey.to_pkcs8_pem(LineEnding::default())?;
-        Ok(pkcs8_pem.as_str().to_owned())
-    } else {
-        Ok(pem.to_string())
-    }
 }
