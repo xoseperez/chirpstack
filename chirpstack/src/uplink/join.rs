@@ -441,6 +441,7 @@ impl JoinRequest {
                     .cloned()
                     .collect(),
             },
+            &metrics::Aggregation::default_aggregations(),
         )
         .await?;
 
@@ -490,6 +491,7 @@ impl JoinRequest {
                                 kind: metrics::Kind::ABSOLUTE,
                                 metrics: [("error_OTAA".into(), 1f64)].iter().cloned().collect(),
                             },
+                            &metrics::Aggregation::default_aggregations(),
                         )
                         .await?;
 
@@ -574,7 +576,8 @@ impl JoinRequest {
                 aes_key: v.aes_key.clone(),
             });
         }
-        self.js_session_key_id = join_ans_pl.session_key_id.clone();
+        self.js_session_key_id
+            .clone_from(&join_ans_pl.session_key_id);
 
         if let Some(v) = &join_ans_pl.nwk_s_key {
             let key = keywrap::unwrap(v).context("Unwrap nwk_s_key")?;

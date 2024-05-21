@@ -8,7 +8,7 @@ option java_multiple_files = true;
 option java_outer_classname = "DeviceProto";
 option csharp_namespace = "Chirpstack.Api";
 
-import "chirpstack-api/common/common.proto";
+import "common/common.proto";
 import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/struct.proto";

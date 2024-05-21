@@ -66,6 +66,7 @@ impl FromProto<Revision> for common::RegParamsRevision {
             common::RegParamsRevision::Rp002101 => Revision::RP002_1_0_1,
             common::RegParamsRevision::Rp002102 => Revision::RP002_1_0_2,
             common::RegParamsRevision::Rp002103 => Revision::RP002_1_0_3,
+            common::RegParamsRevision::Rp002104 => Revision::RP002_1_0_4,
         }
     }
 }
@@ -78,7 +79,8 @@ impl ToProto<common::RegParamsRevision> for Revision {
             Revision::RP002_1_0_0 => common::RegParamsRevision::Rp002100,
             Revision::RP002_1_0_1 => common::RegParamsRevision::Rp002101,
             Revision::RP002_1_0_2 => common::RegParamsRevision::Rp002102,
-            Revision::RP002_1_0_3 | Revision::Latest => common::RegParamsRevision::Rp002103,
+            Revision::RP002_1_0_3 => common::RegParamsRevision::Rp002103,
+            Revision::RP002_1_0_4 | Revision::Latest => common::RegParamsRevision::Rp002104,
         }
     }
 }
@@ -169,6 +171,7 @@ impl FromProto<MeasurementKind> for api::MeasurementKind {
 impl ToProto<common::Aggregation> for Aggregation {
     fn to_proto(self) -> common::Aggregation {
         match self {
+            Aggregation::MINUTE => common::Aggregation::Minute,
             Aggregation::HOUR => common::Aggregation::Hour,
             Aggregation::DAY => common::Aggregation::Day,
             Aggregation::MONTH => common::Aggregation::Month,
@@ -179,6 +182,7 @@ impl ToProto<common::Aggregation> for Aggregation {
 impl FromProto<Aggregation> for common::Aggregation {
     fn from_proto(self) -> Aggregation {
         match self {
+            common::Aggregation::Minute => Aggregation::MINUTE,
             common::Aggregation::Hour => Aggregation::HOUR,
             common::Aggregation::Day => Aggregation::DAY,
             common::Aggregation::Month => Aggregation::MONTH,

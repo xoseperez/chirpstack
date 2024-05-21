@@ -11,7 +11,7 @@ option csharp_namespace = "Chirpstack.Api";
 import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/empty.proto";
-import "chirpstack-api/common/common.proto";
+import "common/common.proto";
 
 
 // MulticastGroupService is the service managing multicast-groups.

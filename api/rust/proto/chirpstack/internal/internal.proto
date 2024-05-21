@@ -2,8 +2,8 @@ syntax = "proto3";
 
 package internal;
 
-import "chirpstack-api/common/common.proto";
-import "chirpstack-api/gw/gw.proto";
+import "common/common.proto";
+import "gw/gw.proto";
 import "google/protobuf/timestamp.proto";
 
 message DeviceSession {

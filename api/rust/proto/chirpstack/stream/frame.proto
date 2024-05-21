@@ -9,8 +9,8 @@ option java_outer_classname = "FrameProto";
 option csharp_namespace = "Chirpstack.Stream";
 
 import "google/protobuf/timestamp.proto";
-import "chirpstack-api/common/common.proto";
-import "chirpstack-api/gw/gw.proto";
+import "common/common.proto";
+import "gw/gw.proto";
 
 message UplinkFrameLog {
   // PHYPayload.

@@ -11,8 +11,8 @@ option csharp_namespace = "Chirpstack.Api";
 import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/empty.proto";
-import "chirpstack-api/common/common.proto";
-import "chirpstack-api/api/device_profile.proto";
+import "common/common.proto";
+import "api/device_profile.proto";
 
 // DeviceProfileTemplateService is the service providing API methods for managing device-profile templates.
 service DeviceProfileTemplateService {
