@@ -488,6 +488,7 @@ pub struct RoamingServer {
     #[serde(with = "humantime_serde")]
     pub passive_roaming_lifetime: Duration,
     pub passive_roaming_kek_label: String,
+    pub passive_roaming_validate_mic: bool,
     pub server: String,
     pub use_target_role_suffix: bool,
     pub ca_cert: String,
@@ -505,6 +506,7 @@ pub struct RoamingServerDefault {
     #[serde(with = "humantime_serde")]
     pub passive_roaming_lifetime: Duration,
     pub passive_roaming_kek_label: String,
+    pub passive_roaming_validate_mic: bool,
     pub server: String,
     pub use_target_role_suffix: bool,
     pub ca_cert: String,
