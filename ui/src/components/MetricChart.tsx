@@ -1,11 +1,11 @@
 import { Card } from "antd";
 
-import { TimeUnit } from "chart.js";
+import type { TimeUnit } from "chart.js";
 import { Line } from "react-chartjs-2";
-import moment from "moment";
 import palette from "google-palette";
 
-import { Metric, Aggregation, MetricKind } from "@chirpstack/chirpstack-api-grpc-web/common/common_pb";
+import type { Metric } from "@chirpstack/chirpstack-api-grpc-web/common/common_pb";
+import { Aggregation, MetricKind } from "@chirpstack/chirpstack-api-grpc-web/common/common_pb";
 
 interface IProps {
   metric: Metric;
@@ -15,19 +15,19 @@ interface IProps {
 
 function MetricChart(props: IProps) {
   let unit: TimeUnit = "hour";
-  let tooltipFormat = "LT";
+  let tooltipFormat = "p";
   if (props.aggregation === Aggregation.DAY) {
     unit = "day";
-    tooltipFormat = "MMM Do";
+    tooltipFormat = "MMM d";
   } else if (props.aggregation === Aggregation.MONTH) {
     unit = "month";
-    tooltipFormat = "MMM YYYY";
+    tooltipFormat = "MMM yyyy";
   } else if (props.aggregation === Aggregation.MINUTE) {
     unit = "minute";
-    tooltipFormat = "LT";
+    tooltipFormat = "p";
   }
 
-  const animation: false = false;
+  const animation = false as const;
 
   const options = {
     animation: animation,
@@ -52,15 +52,13 @@ function MetricChart(props: IProps) {
   };
 
   let prevValue = 0;
-  let data = {
-    labels: props.metric.getTimestampsList().map(v => moment(v.toDate()).valueOf()),
+  const data = {
+    labels: props.metric.getTimestampsList().map(v => v.toDate().getTime()),
     datasets: props.metric
       .getDatasetsList()
       .sort((a, b) => a.getLabel().localeCompare(b.getLabel()))
       .map((v, i) => {
         const colors = palette("cb-Paired", props.metric.getDatasetsList().length).map((hex: string) => "#" + hex);
-        console.log(v.getLabel());
-        console.log(colors[i]);
 
         return {
           label: v.getLabel(),
@@ -72,7 +70,7 @@ function MetricChart(props: IProps) {
               return null;
             } else {
               if (props.metric.getKind() === MetricKind.COUNTER) {
-                let val = v - prevValue;
+                const val = v - prevValue;
                 prevValue = v;
                 if (val < 0) {
                   return 0;

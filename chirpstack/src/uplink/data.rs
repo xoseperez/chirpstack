@@ -503,7 +503,7 @@ impl Data {
                 .cloned()
                 .collect(),
             };
-            integration::log_event(app.id, &dev.variables, &pl).await;
+            integration::log_event(app.id.into(), &dev.variables, &pl).await;
         }
 
         if self.reset {
@@ -521,7 +521,7 @@ impl Data {
                 .cloned()
                 .collect(),
             };
-            integration::log_event(app.id, &dev.variables, &pl).await;
+            integration::log_event(app.id.into(), &dev.variables, &pl).await;
         }
 
         Err(Error::Abort)
@@ -561,7 +561,7 @@ impl Data {
         trace!("Filtering rx_info by tenant_id");
 
         match filter_rx_info_by_tenant_id(
-            self.application.as_ref().unwrap().tenant_id,
+            self.application.as_ref().unwrap().tenant_id.into(),
             &mut self.uplink_frame_set,
         ) {
             Ok(_) => Ok(()),
@@ -986,7 +986,7 @@ impl Data {
                 Ok(v) => v,
                 Err(e) => {
                     integration::log_event(
-                        app.id,
+                        app.id.into(),
                         &dev.variables,
                         &integration_pb::LogEvent {
                             time: Some(Utc::now().into()),
@@ -1009,7 +1009,7 @@ impl Data {
             };
         }
 
-        integration::uplink_event(app.id, &dev.variables, &pl).await;
+        integration::uplink_event(app.id.into(), &dev.variables, &pl).await;
 
         self.uplink_event = Some(pl);
 
@@ -1041,11 +1041,9 @@ impl Data {
                 match v {
                     pbjson_types::value::Kind::NumberValue(v) => {
                         let record = metrics::Record {
-                            time: DateTime::<Utc>::try_from(
-                                up_event.time.as_ref().unwrap().clone(),
-                            )
-                            .map_err(anyhow::Error::msg)?
-                            .with_timezone(&Local),
+                            time: DateTime::<Utc>::try_from(*up_event.time.as_ref().unwrap())
+                                .map_err(anyhow::Error::msg)?
+                                .with_timezone(&Local),
                             kind: match dp_m.kind {
                                 fields::MeasurementKind::COUNTER => metrics::Kind::COUNTER,
                                 fields::MeasurementKind::ABSOLUTE => metrics::Kind::ABSOLUTE,
@@ -1094,7 +1092,7 @@ impl Data {
 
         if update_dp_measurements {
             self.device_profile =
-                Some(device_profile::set_measurements(dp.id, &measurements).await?);
+                Some(device_profile::set_measurements(dp.id.into(), &measurements).await?);
         }
 
         Ok(())
@@ -1167,7 +1165,7 @@ impl Data {
         tags.extend((*dev.tags).clone());
 
         integration::ack_event(
-            app.id,
+            app.id.into(),
             &dev.variables,
             &integration_pb::AckEvent {
                 deduplication_id: self.uplink_frame_set.uplink_set_id.to_string(),

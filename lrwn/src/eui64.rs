@@ -2,6 +2,8 @@ use std::fmt;
 use std::str::FromStr;
 
 use anyhow::{Context, Result};
+#[cfg(feature = "sqlite")]
+use diesel::sqlite::Sqlite;
 #[cfg(feature = "diesel")]
 use diesel::{backend::Backend, deserialize, serialize, sql_types::Binary};
 #[cfg(feature = "serde")]
@@ -70,7 +72,9 @@ impl FromStr for EUI64 {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut bytes: [u8; 8] = [0; 8];
-        hex::decode_to_slice(s, &mut bytes)?;
+        if !s.is_empty() {
+            hex::decode_to_slice(s, &mut bytes)?;
+        }
         Ok(EUI64(bytes))
     }
 }
@@ -133,7 +137,7 @@ where
     }
 }
 
-#[cfg(feature = "diesel")]
+#[cfg(feature = "postgres")]
 impl serialize::ToSql<Binary, diesel::pg::Pg> for EUI64
 where
     [u8]: serialize::ToSql<Binary, diesel::pg::Pg>,
@@ -143,6 +147,14 @@ where
             &self.to_be_bytes(),
             &mut out.reborrow(),
         )
+    }
+}
+
+#[cfg(feature = "sqlite")]
+impl serialize::ToSql<Binary, Sqlite> for EUI64 {
+    fn to_sql<'b>(&'b self, out: &mut serialize::Output<'b, '_, Sqlite>) -> serialize::Result {
+        out.set_value(Vec::from(self.to_be_bytes().as_slice()));
+        Ok(serialize::IsNull::No)
     }
 }
 
@@ -285,7 +297,7 @@ mod tests {
     #[test]
     fn test_eui64_from_str() {
         let eui = EUI64::from_be_bytes([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
-        assert_eq!(eui, EUI64::from_str(&"0102030405060708").unwrap());
+        assert_eq!(eui, EUI64::from_str("0102030405060708").unwrap());
     }
 
     #[test]

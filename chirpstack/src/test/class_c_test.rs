@@ -4,7 +4,7 @@ use super::assert;
 use crate::storage::{
     application,
     device::{self, DeviceClass},
-    device_gateway, device_profile, device_queue, gateway, reset_redis, tenant,
+    device_gateway, device_profile, device_queue, fields, gateway, reset_redis, tenant,
 };
 use crate::{downlink, gateway::backend as gateway_backend, integration, test};
 use chirpstack_api::{common, gw, internal};
@@ -38,7 +38,7 @@ async fn test_downlink_scheduler() {
 
     let gw = gateway::create(gateway::Gateway {
         name: "gateway".into(),
-        tenant_id: t.id.clone(),
+        tenant_id: t.id,
         gateway_id: EUI64::from_be_bytes([1, 2, 3, 4, 5, 6, 7, 8]),
         ..Default::default()
     })
@@ -47,7 +47,7 @@ async fn test_downlink_scheduler() {
 
     let app = application::create(application::Application {
         name: "app".into(),
-        tenant_id: t.id.clone(),
+        tenant_id: t.id,
         ..Default::default()
     })
     .await
@@ -55,7 +55,7 @@ async fn test_downlink_scheduler() {
 
     let dp = device_profile::create(device_profile::DeviceProfile {
         name: "dp".into(),
-        tenant_id: t.id.clone(),
+        tenant_id: t.id,
         region: lrwn::region::CommonName::EU868,
         mac_version: lrwn::region::MacVersion::LORAWAN_1_0_4,
         reg_params_revision: lrwn::region::Revision::RP002_1_0_3,
@@ -68,8 +68,8 @@ async fn test_downlink_scheduler() {
 
     let dev = device::create(device::Device {
         name: "device".into(),
-        application_id: app.id.clone(),
-        device_profile_id: dp.id.clone(),
+        application_id: app.id,
+        device_profile_id: dp.id,
         dev_eui: EUI64::from_be_bytes([2, 2, 3, 4, 5, 6, 7, 8]),
         enabled_class: DeviceClass::C,
         dev_addr: Some(DevAddr::from_be_bytes([1, 2, 3, 4])),
@@ -114,8 +114,8 @@ async fn test_downlink_scheduler() {
         name: "device has not yet sent an uplink".into(),
         dev_eui: dev.dev_eui,
         device_queue_items: vec![device_queue::DeviceQueueItem {
-            id: Uuid::nil(),
-            dev_eui: dev.dev_eui.clone(),
+            id: Uuid::nil().into(),
+            dev_eui: dev.dev_eui,
             f_port: 10,
             data: vec![1, 2, 3],
             ..Default::default()
@@ -141,8 +141,8 @@ async fn test_downlink_scheduler() {
         name: "unconfirmed data".into(),
         dev_eui: dev.dev_eui,
         device_queue_items: vec![device_queue::DeviceQueueItem {
-            id: Uuid::nil(),
-            dev_eui: dev.dev_eui.clone(),
+            id: Uuid::nil().into(),
+            dev_eui: dev.dev_eui,
             f_port: 10,
             data: vec![1, 2, 3],
             ..Default::default()
@@ -150,7 +150,7 @@ async fn test_downlink_scheduler() {
         device_session: Some(ds.clone()),
         device_gateway_rx_info: Some(device_gateway_rx_info.clone()),
         assert: vec![
-            assert::n_f_cnt_down(dev.dev_eui.clone(), 5),
+            assert::n_f_cnt_down(dev.dev_eui, 5),
             assert::downlink_frame(gw::DownlinkFrame {
                 gateway_id: "0102030405060708".into(),
                 items: vec![gw::DownlinkFrameItem {
@@ -188,8 +188,8 @@ async fn test_downlink_scheduler() {
         name: "scheduler_run_after has not yet expired".into(),
         dev_eui: dev.dev_eui,
         device_queue_items: vec![device_queue::DeviceQueueItem {
-            id: Uuid::nil(),
-            dev_eui: dev.dev_eui.clone(),
+            id: Uuid::nil().into(),
+            dev_eui: dev.dev_eui,
             f_port: 10,
             data: vec![1, 2, 3],
             ..Default::default()
@@ -215,8 +215,8 @@ async fn test_downlink_scheduler() {
         name: "unconfirmed data".into(),
         dev_eui: dev.dev_eui,
         device_queue_items: vec![device_queue::DeviceQueueItem {
-            id: Uuid::nil(),
-            dev_eui: dev.dev_eui.clone(),
+            id: Uuid::nil().into(),
+            dev_eui: dev.dev_eui,
             f_port: 10,
             data: vec![1, 2, 3],
             confirmed: true,
@@ -225,7 +225,7 @@ async fn test_downlink_scheduler() {
         device_session: Some(ds.clone()),
         device_gateway_rx_info: Some(device_gateway_rx_info.clone()),
         assert: vec![
-            assert::n_f_cnt_down(dev.dev_eui.clone(), 5),
+            assert::n_f_cnt_down(dev.dev_eui, 5),
             assert::downlink_frame(gw::DownlinkFrame {
                 gateway_id: "0102030405060708".into(),
                 items: vec![gw::DownlinkFrameItem {
@@ -276,8 +276,8 @@ async fn test_downlink_scheduler() {
         name: "unconfirmed data".into(),
         dev_eui: dev.dev_eui,
         device_queue_items: vec![device_queue::DeviceQueueItem {
-            id: Uuid::nil(),
-            dev_eui: dev.dev_eui.clone(),
+            id: Uuid::nil().into(),
+            dev_eui: dev.dev_eui,
             f_port: 10,
             data: vec![0; 300],
             ..Default::default()
@@ -295,7 +295,7 @@ async fn run_scheduler_test(t: &DownlinkTest) {
     reset_redis().await.unwrap();
 
     integration::set_mock().await;
-    gateway_backend::set_backend(&"eu868", Box::new(gateway_backend::mock::Backend {})).await;
+    gateway_backend::set_backend("eu868", Box::new(gateway_backend::mock::Backend {})).await;
 
     integration::mock::reset().await;
     gateway_backend::mock::reset().await;
@@ -303,7 +303,12 @@ async fn run_scheduler_test(t: &DownlinkTest) {
     device::partial_update(
         t.dev_eui,
         &device::DeviceChangeset {
-            device_session: Some(t.device_session.clone()),
+            device_session: Some(
+                t.device_session
+                    .as_ref()
+                    .map(fields::DeviceSession::from)
+                    .clone(),
+            ),
             ..Default::default()
         },
     )
@@ -311,7 +316,7 @@ async fn run_scheduler_test(t: &DownlinkTest) {
     .unwrap();
 
     if let Some(rx_info) = &t.device_gateway_rx_info {
-        let _ = device_gateway::save_rx_info(rx_info).await.unwrap();
+        device_gateway::save_rx_info(rx_info).await.unwrap();
     }
 
     for qi in &t.device_queue_items {

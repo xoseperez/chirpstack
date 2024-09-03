@@ -287,7 +287,11 @@ impl InternalService for Internal {
         let tenant_id = if req_key.tenant_id.is_empty() {
             None
         } else {
-            Some(Uuid::from_str(&req_key.tenant_id).map_err(|e| e.status())?)
+            Some(
+                Uuid::from_str(&req_key.tenant_id)
+                    .map_err(|e| e.status())?
+                    .into(),
+            )
         };
 
         if req_key.is_admin && tenant_id.is_some() {
@@ -312,7 +316,7 @@ impl InternalService for Internal {
         let ak = api_key::ApiKey {
             name: req_key.name.clone(),
             is_admin: req_key.is_admin,
-            tenant_id,
+            tenant_id: tenant_id.map(|u| u.into()),
             ..Default::default()
         };
 
@@ -424,6 +428,8 @@ impl InternalService for Internal {
                 login_label: conf.user_authentication.oauth2.login_label.clone(),
                 logout_url: conf.user_authentication.oauth2.logout_url.clone(),
             }),
+            tileserver_url: conf.ui.tileserver_url.clone(),
+            map_attribution: conf.ui.map_attribution.clone(),
         }))
     }
 

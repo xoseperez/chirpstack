@@ -47,7 +47,7 @@ impl MulticastGroupService for MulticastGroup {
             .await?;
 
         let mg = multicast::MulticastGroup {
-            application_id: app_id,
+            application_id: app_id.into(),
             name: req_mg.name.clone(),
             region: req_mg.region().from_proto(),
             mc_addr: DevAddr::from_str(&req_mg.mc_addr).map_err(|e| e.status())?,
@@ -154,7 +154,7 @@ impl MulticastGroupService for MulticastGroup {
             .await?;
 
         let _ = multicast::update(multicast::MulticastGroup {
-            id: mg_id,
+            id: mg_id.into(),
             name: req_mg.name.clone(),
             region: req_mg.region().from_proto(),
             mc_addr: DevAddr::from_str(&req_mg.mc_addr).map_err(|e| e.status())?,
@@ -408,7 +408,7 @@ impl MulticastGroupService for MulticastGroup {
             .await?;
 
         let f_cnt = downlink::multicast::enqueue(multicast::MulticastGroupQueueItem {
-            multicast_group_id: mg_id,
+            multicast_group_id: mg_id.into(),
             f_port: req_enq.f_port as i16,
             data: req_enq.data.clone(),
             ..Default::default()
@@ -550,7 +550,7 @@ pub mod test {
         // create application
         let app = application::create(application::Application {
             name: "test-app".into(),
-            tenant_id: t.id.clone(),
+            tenant_id: t.id,
             ..Default::default()
         })
         .await
@@ -559,7 +559,7 @@ pub mod test {
         // create device-profile
         let dp = device_profile::create(device_profile::DeviceProfile {
             name: "test-dp".into(),
-            tenant_id: t.id.clone(),
+            tenant_id: t.id,
             ..Default::default()
         })
         .await
@@ -871,7 +871,7 @@ pub mod test {
 
     fn get_request<T>(user_id: &Uuid, req: T) -> Request<T> {
         let mut req = Request::new(req);
-        req.extensions_mut().insert(AuthID::User(user_id.clone()));
+        req.extensions_mut().insert(AuthID::User(*user_id));
         req
     }
 }

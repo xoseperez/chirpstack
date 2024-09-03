@@ -2,6 +2,8 @@ use std::fmt;
 use std::str::FromStr;
 
 use anyhow::Result;
+#[cfg(feature = "sqlite")]
+use diesel::sqlite::Sqlite;
 #[cfg(feature = "diesel")]
 use diesel::{backend::Backend, deserialize, serialize, sql_types::Binary};
 #[cfg(feature = "serde")]
@@ -234,7 +236,9 @@ impl FromStr for DevAddr {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut bytes: [u8; 4] = [0; 4];
-        hex::decode_to_slice(s, &mut bytes)?;
+        if !s.is_empty() {
+            hex::decode_to_slice(s, &mut bytes)?;
+        }
         Ok(DevAddr(bytes))
     }
 }
@@ -268,7 +272,7 @@ where
     }
 }
 
-#[cfg(feature = "diesel")]
+#[cfg(feature = "postgres")]
 impl serialize::ToSql<Binary, diesel::pg::Pg> for DevAddr
 where
     [u8]: serialize::ToSql<Binary, diesel::pg::Pg>,
@@ -278,6 +282,14 @@ where
             &self.to_be_bytes(),
             &mut out.reborrow(),
         )
+    }
+}
+
+#[cfg(feature = "sqlite")]
+impl serialize::ToSql<Binary, Sqlite> for DevAddr {
+    fn to_sql<'b>(&'b self, out: &mut serialize::Output<'b, '_, Sqlite>) -> serialize::Result {
+        out.set_value(Vec::from(self.to_be_bytes().as_slice()));
+        Ok(serialize::IsNull::No)
     }
 }
 
@@ -371,7 +383,7 @@ mod tests {
         ];
 
         for tst in tests {
-            let mut devaddr = tst.devaddr.clone();
+            let mut devaddr = tst.devaddr;
             devaddr.set_dev_addr_prefix(tst.netid.dev_addr_prefix());
             assert_eq!(tst.expected_devaddr, devaddr);
         }

@@ -3,7 +3,8 @@ use handlebars::{no_escape, Handlebars};
 use super::super::config;
 
 pub fn run() {
-    let template = r#"
+    let template = vec![
+r#"
 # Logging configuration
 [logging]
 
@@ -20,7 +21,9 @@ pub fn run() {
 
   # Log as JSON.
   json={{ logging.json }}
-
+"#,
+#[cfg(feature = "postgres")]
+r#"
 # PostgreSQL configuration.
 [postgresql]
 
@@ -46,8 +49,36 @@ pub fn run() {
   # the server-certificate is not signed by a CA in the platform certificate
   # store.
   ca_cert="{{ postgresql.ca_cert }}"
+"#,
+#[cfg(feature = "sqlite")]
+r#"
+# SQLite configuration.
+[sqlite]
 
+  # Sqlite DB path.
+  #
+  # Format example: sqlite:///<DATABASE>.
+  #
+  path="{{ sqlite.path }}"
 
+  # Max open connections.
+  #
+  # This sets the max. number of open connections that are allowed in the
+  # SQLite connection pool.
+  max_open_connections={{ sqlite.max_open_connections }}
+
+  # PRAGMAs.
+  #
+  # This configures the list of PRAGMAs that are executed to prepare the
+  # SQLite library. For a full list of available PRAGMAs see:
+  # https://www.sqlite.org/pragma.html
+  pragmas=[
+    {{#each sqlite.pragmas}}
+    "{{this}}",
+    {{/each}}
+  ]
+"#,
+r#"
 # Redis configuration.
 [redis]
 
@@ -618,6 +649,15 @@ pub fn run() {
     # is needed.
     assume_email_verified={{ user_authentication.openid_connect.assume_email_verified }}
 
+    # Scopes.
+    #
+    # This configures the scopes that are used during login. You must at least define
+    # "email" and "profile".
+    scopes=[
+      {{#each user_authentication.openid_connect.scopes}}
+      "{{this}}",
+      {{/each}}
+    ]
 
   # OAuth2 backend.
   [user_authentication.oauth2]
@@ -695,6 +735,16 @@ pub fn run() {
     # If set to true, then ChirpStack will ignore the email_verified received
     # from the userinfo URL, assuming it will be true.
     assume_email_verified={{ user_authentication.oauth2.assume_email_verified }}
+
+    # Scopes.
+    #
+    # This configures the scopes that are used during login. You must at least define
+    # "email".
+    scopes=[
+      {{#each user_authentication.oauth2.scopes}}
+      "{{this}}",
+      {{/each}}
+    ]
 
 
 # Join Server configuration.
@@ -927,14 +977,30 @@ pub fn run() {
   label="{{ this.label }}"
   kek="{{ this.kek }}"
 {{/each}}
-"#;
+
+
+# UI configuration.
+[ui]
+  # Tileserver URL.
+  #
+  # This configures the tileserver used in the UI to display maps.
+  # The default value uses the OSM tiles.
+  tileserver_url="{{ui.tileserver_url}}"
+
+  # Map attribution.
+  #
+  # This configures the map attribution. The default attribution relates to the
+  # default tileserver_url (OSM). If you configure a different tile-server, you
+  # might need to update the map_attribution.
+  map_attribution="{{ui.map_attribution}}"
+"#].join("\n");
 
     let mut reg = Handlebars::new();
     reg.register_escape_fn(no_escape);
     let conf = config::get();
     println!(
         "{}",
-        reg.render_template(template, &conf)
+        reg.render_template(&template, &conf)
             .expect("render configfile error")
     );
 }

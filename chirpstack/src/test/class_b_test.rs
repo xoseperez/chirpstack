@@ -5,7 +5,7 @@ use crate::gpstime::ToGpsTime;
 use crate::storage::{
     application,
     device::{self, DeviceClass},
-    device_gateway, device_profile, device_queue, gateway, reset_redis, tenant,
+    device_gateway, device_profile, device_queue, fields, gateway, reset_redis, tenant,
 };
 use crate::{
     config, downlink, downlink::classb, gateway::backend as gateway_backend, integration, test,
@@ -48,7 +48,7 @@ async fn test_uplink() {
 
     let gw = gateway::create(gateway::Gateway {
         name: "gateway".into(),
-        tenant_id: t.id.clone(),
+        tenant_id: t.id,
         gateway_id: EUI64::from_be_bytes([1, 2, 3, 4, 5, 6, 7, 8]),
         ..Default::default()
     })
@@ -57,7 +57,7 @@ async fn test_uplink() {
 
     let app = application::create(application::Application {
         name: "app".into(),
-        tenant_id: t.id.clone(),
+        tenant_id: t.id,
         ..Default::default()
     })
     .await
@@ -65,7 +65,7 @@ async fn test_uplink() {
 
     let dp = device_profile::create(device_profile::DeviceProfile {
         name: "dp".into(),
-        tenant_id: t.id.clone(),
+        tenant_id: t.id,
         region: lrwn::region::CommonName::EU868,
         mac_version: lrwn::region::MacVersion::LORAWAN_1_0_4,
         reg_params_revision: lrwn::region::Revision::RP002_1_0_3,
@@ -78,8 +78,8 @@ async fn test_uplink() {
 
     let dev = device::create(device::Device {
         name: "device".into(),
-        application_id: app.id.clone(),
-        device_profile_id: dp.id.clone(),
+        application_id: app.id,
+        device_profile_id: dp.id,
         dev_eui: EUI64::from_be_bytes([2, 2, 3, 4, 5, 6, 7, 8]),
         enabled_class: DeviceClass::A,
         dev_addr: Some(DevAddr::from_be_bytes([1, 2, 3, 4])),
@@ -103,7 +103,7 @@ async fn test_uplink() {
         frequency: 868100000,
         ..Default::default()
     };
-    uplink::helpers::set_uplink_modulation(&"eu868", &mut tx_info, 0).unwrap();
+    uplink::helpers::set_uplink_modulation("eu868", &mut tx_info, 0).unwrap();
 
     let ds = internal::DeviceSession {
         mac_version: common::MacVersion::Lorawan104.into(),
@@ -157,8 +157,8 @@ async fn test_uplink() {
             mic: Some([241, 100, 207, 79]),
         },
         assert: vec![
-            assert::f_cnt_up(dev.dev_eui.clone(), 9),
-            assert::enabled_class(dev.dev_eui.clone(), DeviceClass::B),
+            assert::f_cnt_up(dev.dev_eui, 9),
+            assert::enabled_class(dev.dev_eui, DeviceClass::B),
         ],
     })
     .await;
@@ -192,8 +192,8 @@ async fn test_uplink() {
             mic: Some([137, 180, 12, 148]),
         },
         assert: vec![
-            assert::f_cnt_up(dev.dev_eui.clone(), 9),
-            assert::enabled_class(dev.dev_eui.clone(), DeviceClass::A),
+            assert::f_cnt_up(dev.dev_eui, 9),
+            assert::enabled_class(dev.dev_eui, DeviceClass::A),
         ],
     })
     .await;
@@ -213,7 +213,7 @@ async fn test_downlink_scheduler() {
 
     let gw = gateway::create(gateway::Gateway {
         name: "gateway".into(),
-        tenant_id: t.id.clone(),
+        tenant_id: t.id,
         gateway_id: EUI64::from_be_bytes([1, 2, 3, 4, 5, 6, 7, 8]),
         ..Default::default()
     })
@@ -222,7 +222,7 @@ async fn test_downlink_scheduler() {
 
     let app = application::create(application::Application {
         name: "app".into(),
-        tenant_id: t.id.clone(),
+        tenant_id: t.id,
         ..Default::default()
     })
     .await
@@ -230,7 +230,7 @@ async fn test_downlink_scheduler() {
 
     let dp = device_profile::create(device_profile::DeviceProfile {
         name: "dp".into(),
-        tenant_id: t.id.clone(),
+        tenant_id: t.id,
         region: lrwn::region::CommonName::EU868,
         mac_version: lrwn::region::MacVersion::LORAWAN_1_0_4,
         reg_params_revision: lrwn::region::Revision::RP002_1_0_3,
@@ -243,8 +243,8 @@ async fn test_downlink_scheduler() {
 
     let dev = device::create(device::Device {
         name: "device".into(),
-        application_id: app.id.clone(),
-        device_profile_id: dp.id.clone(),
+        application_id: app.id,
+        device_profile_id: dp.id,
         dev_eui: EUI64::from_be_bytes([2, 2, 3, 4, 5, 6, 7, 8]),
         enabled_class: DeviceClass::B,
         dev_addr: Some(DevAddr::from_be_bytes([1, 2, 3, 4])),
@@ -295,8 +295,8 @@ async fn test_downlink_scheduler() {
         name: "class-b downlink".into(),
         dev_eui: dev.dev_eui,
         device_queue_items: vec![device_queue::DeviceQueueItem {
-            id: Uuid::nil(),
-            dev_eui: dev.dev_eui.clone(),
+            id: Uuid::nil().into(),
+            dev_eui: dev.dev_eui,
             f_port: 10,
             data: vec![1, 2, 3],
             ..Default::default()
@@ -304,8 +304,8 @@ async fn test_downlink_scheduler() {
         device_session: Some(ds.clone()),
         device_gateway_rx_info: Some(device_gateway_rx_info.clone()),
         assert: vec![
-            assert::f_cnt_up(dev.dev_eui.clone(), 8),
-            assert::n_f_cnt_down(dev.dev_eui.clone(), 5),
+            assert::f_cnt_up(dev.dev_eui, 8),
+            assert::n_f_cnt_down(dev.dev_eui, 5),
             assert::downlink_frame(gw::DownlinkFrame {
                 gateway_id: "0102030405060708".into(),
                 items: vec![gw::DownlinkFrameItem {
@@ -347,8 +347,8 @@ async fn test_downlink_scheduler() {
         name: "scheduler_run_after has not yet expired".into(),
         dev_eui: dev.dev_eui,
         device_queue_items: vec![device_queue::DeviceQueueItem {
-            id: Uuid::nil(),
-            dev_eui: dev.dev_eui.clone(),
+            id: Uuid::nil().into(),
+            dev_eui: dev.dev_eui,
             f_port: 10,
             data: vec![1, 2, 3],
             ..Default::default()
@@ -375,15 +375,15 @@ async fn test_downlink_scheduler() {
         dev_eui: dev.dev_eui,
         device_queue_items: vec![
             device_queue::DeviceQueueItem {
-                id: Uuid::nil(),
-                dev_eui: dev.dev_eui.clone(),
+                id: Uuid::nil().into(),
+                dev_eui: dev.dev_eui,
                 f_port: 10,
                 data: vec![1, 2, 3],
                 ..Default::default()
             },
             device_queue::DeviceQueueItem {
-                id: Uuid::new_v4(),
-                dev_eui: dev.dev_eui.clone(),
+                id: Uuid::new_v4().into(),
+                dev_eui: dev.dev_eui,
                 f_port: 10,
                 data: vec![1, 2, 3, 4],
                 ..Default::default()
@@ -392,8 +392,8 @@ async fn test_downlink_scheduler() {
         device_session: Some(ds.clone()),
         device_gateway_rx_info: Some(device_gateway_rx_info.clone()),
         assert: vec![
-            assert::f_cnt_up(dev.dev_eui.clone(), 8),
-            assert::n_f_cnt_down(dev.dev_eui.clone(), 5),
+            assert::f_cnt_up(dev.dev_eui, 8),
+            assert::n_f_cnt_down(dev.dev_eui, 5),
             assert::downlink_frame(gw::DownlinkFrame {
                 gateway_id: "0102030405060708".into(),
                 items: vec![gw::DownlinkFrameItem {
@@ -440,7 +440,7 @@ async fn run_uplink_test(t: &UplinkTest) {
     reset_redis().await.unwrap();
 
     integration::set_mock().await;
-    gateway_backend::set_backend(&"eu868", Box::new(gateway_backend::mock::Backend {})).await;
+    gateway_backend::set_backend("eu868", Box::new(gateway_backend::mock::Backend {})).await;
 
     integration::mock::reset().await;
     gateway_backend::mock::reset().await;
@@ -449,7 +449,12 @@ async fn run_uplink_test(t: &UplinkTest) {
     device::partial_update(
         t.dev_eui,
         &device::DeviceChangeset {
-            device_session: Some(t.device_session.clone()),
+            device_session: Some(
+                t.device_session
+                    .as_ref()
+                    .map(fields::DeviceSession::from)
+                    .clone(),
+            ),
             ..Default::default()
         },
     )
@@ -482,7 +487,7 @@ async fn run_scheduler_test(t: &DownlinkTest) {
     reset_redis().await.unwrap();
 
     integration::set_mock().await;
-    gateway_backend::set_backend(&"eu868", Box::new(gateway_backend::mock::Backend {})).await;
+    gateway_backend::set_backend("eu868", Box::new(gateway_backend::mock::Backend {})).await;
 
     integration::mock::reset().await;
     gateway_backend::mock::reset().await;
@@ -490,7 +495,12 @@ async fn run_scheduler_test(t: &DownlinkTest) {
     device::partial_update(
         t.dev_eui,
         &device::DeviceChangeset {
-            device_session: Some(t.device_session.clone()),
+            device_session: Some(
+                t.device_session
+                    .as_ref()
+                    .map(fields::DeviceSession::from)
+                    .clone(),
+            ),
             ..Default::default()
         },
     )
@@ -498,7 +508,7 @@ async fn run_scheduler_test(t: &DownlinkTest) {
     .unwrap();
 
     if let Some(rx_info) = &t.device_gateway_rx_info {
-        let _ = device_gateway::save_rx_info(rx_info).await.unwrap();
+        device_gateway::save_rx_info(rx_info).await.unwrap();
     }
 
     for qi in &t.device_queue_items {

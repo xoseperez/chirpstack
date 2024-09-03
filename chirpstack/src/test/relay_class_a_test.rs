@@ -6,7 +6,7 @@ use super::assert;
 use crate::storage::{
     application,
     device::{self, DeviceClass},
-    device_profile, device_queue, gateway, reset_redis, tenant,
+    device_profile, device_queue, fields, gateway, reset_redis, tenant,
 };
 use crate::{gateway::backend as gateway_backend, integration, test, uplink};
 use chirpstack_api::{common, gw, integration as integration_pb, internal};
@@ -121,7 +121,7 @@ async fn test_lorawan_10() {
         frequency: 868100000,
         ..Default::default()
     };
-    uplink::helpers::set_uplink_modulation(&"eu868", &mut tx_info, 5).unwrap();
+    uplink::helpers::set_uplink_modulation("eu868", &mut tx_info, 5).unwrap();
 
     let ds_relay = internal::DeviceSession {
         mac_version: common::MacVersion::Lorawan104.into(),
@@ -769,7 +769,7 @@ async fn run_test(t: &Test) {
     reset_redis().await.unwrap();
 
     integration::set_mock().await;
-    gateway_backend::set_backend(&"eu868", Box::new(gateway_backend::mock::Backend {})).await;
+    gateway_backend::set_backend("eu868", Box::new(gateway_backend::mock::Backend {})).await;
 
     integration::mock::reset().await;
     gateway_backend::mock::reset().await;
@@ -782,7 +782,12 @@ async fn run_test(t: &Test) {
     device::partial_update(
         t.dev_eui_relay,
         &device::DeviceChangeset {
-            device_session: Some(t.device_session_relay.clone()),
+            device_session: Some(
+                t.device_session_relay
+                    .as_ref()
+                    .map(fields::DeviceSession::from)
+                    .clone(),
+            ),
             ..Default::default()
         },
     )
@@ -791,7 +796,12 @@ async fn run_test(t: &Test) {
     device::partial_update(
         t.dev_eui_relay_ed,
         &device::DeviceChangeset {
-            device_session: Some(t.device_session_relay_ed.clone()),
+            device_session: Some(
+                t.device_session_relay_ed
+                    .as_ref()
+                    .map(fields::DeviceSession::from)
+                    .clone(),
+            ),
             ..Default::default()
         },
     )

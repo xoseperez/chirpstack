@@ -4,6 +4,8 @@ use std::ops::{Deref, DerefMut};
 use std::time::Duration;
 
 use anyhow::Result;
+#[cfg(feature = "sqlite")]
+use diesel::sqlite::Sqlite;
 #[cfg(feature = "diesel")]
 use diesel::{backend::Backend, deserialize, serialize, sql_types::SmallInt};
 #[cfg(feature = "serde")]
@@ -1886,7 +1888,7 @@ where
     }
 }
 
-#[cfg(feature = "diesel")]
+#[cfg(feature = "postgres")]
 impl serialize::ToSql<SmallInt, diesel::pg::Pg> for RelayModeActivation
 where
     i16: serialize::ToSql<SmallInt, diesel::pg::Pg>,
@@ -1894,6 +1896,14 @@ where
     fn to_sql(&self, out: &mut serialize::Output<'_, '_, diesel::pg::Pg>) -> serialize::Result {
         let i = self.to_u8() as i16;
         <i16 as serialize::ToSql<SmallInt, diesel::pg::Pg>>::to_sql(&i, &mut out.reborrow())
+    }
+}
+
+#[cfg(feature = "sqlite")]
+impl serialize::ToSql<SmallInt, Sqlite> for RelayModeActivation {
+    fn to_sql<'b>(&'b self, out: &mut serialize::Output<'b, '_, Sqlite>) -> serialize::Result {
+        out.set_value(self.to_u8() as i32);
+        Ok(serialize::IsNull::No)
     }
 }
 
@@ -2437,22 +2447,8 @@ impl PowerLevel {
     }
 
     pub fn to_bytes(&self) -> [u8; 2] {
-        let mut wor_snr = self.wor_snr;
-        let mut wor_rssi = self.wor_rssi;
-
-        // Set to closest possible value.
-        if wor_snr < -20 {
-            wor_snr = -20;
-        }
-        if wor_snr > 11 {
-            wor_snr = 11;
-        }
-        if wor_rssi > -15 {
-            wor_rssi = -15;
-        }
-        if wor_rssi < -142 {
-            wor_rssi = -142;
-        }
+        let wor_snr = self.wor_snr.clamp(-20, 11);
+        let wor_rssi = self.wor_rssi.clamp(-142, -15);
 
         // Encode values
         let wor_snr = (wor_snr + 20) as u8;
@@ -2663,7 +2659,7 @@ mod test {
                 uplink: false,
                 command: MACCommand::NewChannelReq(NewChannelReqPayload {
                     ch_index: 3,
-                    freq: 2410_000_000,
+                    freq: 2_410_000_000,
                     max_dr: 5,
                     min_dr: 0,
                 }),

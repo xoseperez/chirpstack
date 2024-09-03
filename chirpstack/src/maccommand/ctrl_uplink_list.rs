@@ -277,7 +277,7 @@ mod test {
             device::partial_update(
                 dev.dev_eui,
                 &device::DeviceChangeset {
-                    device_session: Some(Some(tst.device_session_ed.clone())),
+                    device_session: Some(Some(tst.device_session_ed.clone().into())),
                     ..Default::default()
                 },
             )
@@ -285,7 +285,7 @@ mod test {
             .unwrap();
 
             let mut relay_dev = device::Device {
-                device_session: Some(tst.device_session.clone()),
+                device_session: Some(tst.device_session.clone().into()),
                 ..Default::default()
             };
 
@@ -297,10 +297,10 @@ mod test {
             .await;
 
             if let Some(e) = &tst.expected_error {
-                assert_eq!(true, resp.is_err(), "{}", tst.name);
+                assert!(resp.is_err(), "{}", tst.name);
                 assert_eq!(e, &format!("{}", resp.err().unwrap()), "{}", tst.name);
             } else {
-                assert_eq!(true, resp.unwrap().is_none());
+                assert!(resp.unwrap().is_none());
             }
 
             let d = device::get(&dev.dev_eui).await.unwrap();

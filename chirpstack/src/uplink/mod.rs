@@ -33,6 +33,7 @@ pub mod helpers;
 pub mod join;
 pub mod join_fns;
 pub mod join_sns;
+pub mod mesh;
 pub mod stats;
 
 #[derive(Clone, Hash, PartialEq, Eq, EncodeLabelSet, Debug)]
@@ -400,7 +401,8 @@ async fn update_gateway_metadata(ufs: &mut UplinkFrameSet) -> Result<()> {
             .insert(gw_id, gw_meta.is_private_up);
         ufs.gateway_private_down_map
             .insert(gw_id, gw_meta.is_private_down);
-        ufs.gateway_tenant_id_map.insert(gw_id, gw_meta.tenant_id);
+        ufs.gateway_tenant_id_map
+            .insert(gw_id, gw_meta.tenant_id.into());
     }
 
     Ok(())

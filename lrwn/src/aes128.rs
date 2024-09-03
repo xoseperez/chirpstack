@@ -2,6 +2,8 @@ use std::fmt;
 use std::str::FromStr;
 
 use anyhow::Result;
+#[cfg(feature = "sqlite")]
+use diesel::sqlite::Sqlite;
 #[cfg(feature = "diesel")]
 use diesel::{backend::Backend, deserialize, serialize, sql_types::Binary};
 #[cfg(feature = "serde")]
@@ -62,7 +64,9 @@ impl FromStr for AES128Key {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut bytes: [u8; 16] = [0; 16];
-        hex::decode_to_slice(s, &mut bytes)?;
+        if !s.is_empty() {
+            hex::decode_to_slice(s, &mut bytes)?;
+        }
         Ok(AES128Key(bytes))
     }
 }
@@ -125,7 +129,7 @@ where
     }
 }
 
-#[cfg(feature = "diesel")]
+#[cfg(feature = "postgres")]
 impl serialize::ToSql<Binary, diesel::pg::Pg> for AES128Key
 where
     [u8]: serialize::ToSql<Binary, diesel::pg::Pg>,
@@ -135,6 +139,14 @@ where
             &self.to_bytes(),
             &mut out.reborrow(),
         )
+    }
+}
+
+#[cfg(feature = "sqlite")]
+impl serialize::ToSql<Binary, Sqlite> for AES128Key {
+    fn to_sql<'b>(&'b self, out: &mut serialize::Output<'b, '_, Sqlite>) -> serialize::Result {
+        out.set_value(Vec::from(self.to_bytes().as_slice()));
+        Ok(serialize::IsNull::No)
     }
 }
 

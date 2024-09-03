@@ -16,7 +16,7 @@ function CreateDeviceProfileTemplate() {
   const navigate = useNavigate();
 
   const onFinish = (obj: DeviceProfileTemplate) => {
-    let req = new CreateDeviceProfileTemplateRequest();
+    const req = new CreateDeviceProfileTemplateRequest();
     req.setDeviceProfileTemplate(obj);
 
     DeviceProfileTemplateStore.create(req, () => {
@@ -24,39 +24,41 @@ function CreateDeviceProfileTemplate() {
     });
   };
 
-  const codecScript = `// Decode uplink function.
-  //
-  // Input is an object with the following fields:
-  // - bytes = Byte array containing the uplink payload, e.g. [255, 230, 255, 0]
-  // - fPort = Uplink fPort.
-  // - variables = Object containing the configured device variables.
-  //
-  // Output must be an object with the following fields:
-  // - data = Object representing the decoded payload.
-  function decodeUplink(input) {
-    return {
-      data: {
-        temp: 22.5
-      }
-    };
-  }
-  
-  // Encode downlink function.
-  //
-  // Input is an object with the following fields:
-  // - data = Object representing the payload that must be encoded.
-  // - variables = Object containing the configured device variables.
-  //
-  // Output must be an object with the following fields:
-  // - bytes = Byte array containing the downlink payload.
-  function encodeDownlink(input) {
-    return {
-      bytes: [225, 230, 255, 0]
-    };
-  }
-  `;
+  const codecScript = `/**
+ * Decode uplink function
+ * 
+ * @param {object} input
+ * @param {number[]} input.bytes Byte array containing the uplink payload, e.g. [255, 230, 255, 0]
+ * @param {number} input.fPort Uplink fPort.
+ * @param {Record<string, string>} input.variables Object containing the configured device variables.
+ * 
+ * @returns {{data: object}} Object representing the decoded payload.
+ */
+function decodeUplink(input) {
+  return {
+    data: {
+      // temp: 22.5
+    }
+  };
+}
 
-  let deviceProfileTemplate = new DeviceProfileTemplate();
+/**
+ * Encode downlink function.
+ * 
+ * @param {object} input
+ * @param {object} input.data Object representing the payload that must be encoded.
+ * @param {Record<string, string>} input.variables Object containing the configured device variables.
+ * 
+ * @returns {{bytes: number[]}} Byte array containing the downlink payload.
+ */
+function encodeDownlink(input) {
+  return {
+    // bytes: [225, 230, 255, 0]
+  };
+}
+`;
+
+  const deviceProfileTemplate = new DeviceProfileTemplate();
   deviceProfileTemplate.setPayloadCodecScript(codecScript);
   deviceProfileTemplate.setSupportsOtaa(true);
   deviceProfileTemplate.setUplinkInterval(3600);

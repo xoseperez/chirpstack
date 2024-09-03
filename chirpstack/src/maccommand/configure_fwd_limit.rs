@@ -118,7 +118,7 @@ mod test {
 
         for tst in &tests {
             let mut dev = device::Device {
-                device_session: Some(tst.device_session.clone()),
+                device_session: Some(tst.device_session.clone().into()),
                 ..Default::default()
             };
             let resp = handle(
@@ -128,10 +128,10 @@ mod test {
             );
 
             if let Some(e) = &tst.expected_error {
-                assert_eq!(true, resp.is_err(), "{}", tst.name);
+                assert!(resp.is_err(), "{}", tst.name);
                 assert_eq!(e, &format!("{}", resp.err().unwrap()), "{}", tst.name);
             } else {
-                assert_eq!(true, resp.unwrap().is_none());
+                assert!(resp.unwrap().is_none());
             }
 
             assert_eq!(

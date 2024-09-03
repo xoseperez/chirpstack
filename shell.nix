@@ -1,4 +1,4 @@
-{ pkgs ? import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/nixos-23.11.tar.gz") {} }:
+{ pkgs ? import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/nixos-24.05.tar.gz") {} }:
 
 pkgs.mkShell {
   nativeBuildInputs = [
@@ -18,6 +18,8 @@ pkgs.mkShell {
     pkgs.protoc-gen-grpc-web    # grpc-web api
     pkgs.protoc-gen-go          # go api
     pkgs.protoc-gen-go-grpc
+    pkgs.openssl
+    pkgs.sqlite
   ];
   LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
   BINDGEN_EXTRA_CLANG_ARGS = "-I${pkgs.llvmPackages.libclang.lib}/lib/clang/${pkgs.llvmPackages.libclang.version}/include";

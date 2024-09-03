@@ -64,8 +64,8 @@ impl DeviceService for Device {
 
         let d = device::Device {
             dev_eui,
-            application_id: app_id,
-            device_profile_id: dp_id,
+            application_id: app_id.into(),
+            device_profile_id: dp_id.into(),
             name: req_d.name.clone(),
             description: req_d.description.clone(),
             skip_fcnt_check: req_d.skip_fcnt_check,
@@ -191,8 +191,8 @@ impl DeviceService for Device {
         // update
         let _ = device::update(device::Device {
             dev_eui,
-            application_id: app_id,
-            device_profile_id: dp_id,
+            application_id: app_id.into(),
+            device_profile_id: dp_id.into(),
             name: req_d.name.clone(),
             description: req_d.description.clone(),
             skip_fcnt_check: req_d.skip_fcnt_check,
@@ -533,7 +533,7 @@ impl DeviceService for Device {
         dp.reset_session_to_boot_params(&mut ds);
 
         let mut device_changeset = device::DeviceChangeset {
-            device_session: Some(Some(ds)),
+            device_session: Some(Some(ds.into())),
             dev_addr: Some(Some(dev_addr)),
             secondary_dev_addr: Some(None),
             ..Default::default()
@@ -695,20 +695,18 @@ impl DeviceService for Device {
             .await?;
 
         let start = SystemTime::try_from(
-            req.start
+            *req.start
                 .as_ref()
                 .ok_or_else(|| anyhow!("start is None"))
-                .map_err(|e| e.status())?
-                .clone(),
+                .map_err(|e| e.status())?,
         )
         .map_err(|e| e.status())?;
 
         let end = SystemTime::try_from(
-            req.end
+            *req.end
                 .as_ref()
                 .ok_or_else(|| anyhow!("end is None"))
-                .map_err(|e| e.status())?
-                .clone(),
+                .map_err(|e| e.status())?,
         )
         .map_err(|e| e.status())?;
 
@@ -819,20 +817,18 @@ impl DeviceService for Device {
             .await?;
 
         let start = SystemTime::try_from(
-            req.start
+            *req.start
                 .as_ref()
                 .ok_or_else(|| anyhow!("start is None"))
-                .map_err(|e| e.status())?
-                .clone(),
+                .map_err(|e| e.status())?,
         )
         .map_err(|e| e.status())?;
 
         let end = SystemTime::try_from(
-            req.end
+            *req.end
                 .as_ref()
                 .ok_or_else(|| anyhow!("end is None"))
-                .map_err(|e| e.status())?
-                .clone(),
+                .map_err(|e| e.status())?,
         )
         .map_err(|e| e.status())?;
 
@@ -1089,7 +1085,7 @@ impl DeviceService for Device {
         }
 
         let qi = device_queue::DeviceQueueItem {
-            id: Uuid::new_v4(),
+            id: Uuid::new_v4().into(),
             dev_eui,
             f_port: req_qi.f_port as i16,
             confirmed: req_qi.confirmed,
@@ -1256,7 +1252,7 @@ pub mod test {
         // create application
         let app = application::create(application::Application {
             name: "test-app".into(),
-            tenant_id: t.id.clone(),
+            tenant_id: t.id,
             ..Default::default()
         })
         .await
@@ -1265,7 +1261,7 @@ pub mod test {
         // create device-profile
         let dp = device_profile::create(device_profile::DeviceProfile {
             name: "test-dp".into(),
-            tenant_id: t.id.clone(),
+            tenant_id: t.id,
             ..Default::default()
         })
         .await
@@ -1421,12 +1417,10 @@ pub mod test {
         );
 
         // flush dev nonces
-        let _ = device_keys::set_dev_nonces(
-            &EUI64::from_str("0102030405060708").unwrap(),
-            &vec![1, 2, 3],
-        )
-        .await
-        .unwrap();
+        let _ =
+            device_keys::set_dev_nonces(&EUI64::from_str("0102030405060708").unwrap(), &[1, 2, 3])
+                .await
+                .unwrap();
         let flush_dev_nonces_req = get_request(
             &u.id,
             api::FlushDevNoncesRequest {
@@ -1545,11 +1539,14 @@ pub mod test {
             dev.dev_eui,
             &device::DeviceChangeset {
                 dev_addr: Some(Some(DevAddr::from_be_bytes([1, 2, 3, 4]))),
-                device_session: Some(Some(internal::DeviceSession {
-                    dev_addr: vec![1, 2, 3, 4],
-                    js_session_key_id: vec![8, 7, 6, 5, 4, 3, 2, 1],
-                    ..Default::default()
-                })),
+                device_session: Some(Some(
+                    internal::DeviceSession {
+                        dev_addr: vec![1, 2, 3, 4],
+                        js_session_key_id: vec![8, 7, 6, 5, 4, 3, 2, 1],
+                        ..Default::default()
+                    }
+                    .into(),
+                )),
                 ..Default::default()
             },
         )
@@ -1574,14 +1571,17 @@ pub mod test {
         device::partial_update(
             dev.dev_eui,
             &device::DeviceChangeset {
-                device_session: Some(Some(internal::DeviceSession {
-                    dev_addr: vec![1, 2, 3, 4],
-                    app_s_key: Some(common::KeyEnvelope {
-                        kek_label: "test-key".into(),
-                        aes_key: vec![8, 7, 6, 5, 4, 3, 2, 1, 8, 7, 6, 5, 4, 3, 2, 1],
-                    }),
-                    ..Default::default()
-                })),
+                device_session: Some(Some(
+                    internal::DeviceSession {
+                        dev_addr: vec![1, 2, 3, 4],
+                        app_s_key: Some(common::KeyEnvelope {
+                            kek_label: "test-key".into(),
+                            aes_key: vec![8, 7, 6, 5, 4, 3, 2, 1, 8, 7, 6, 5, 4, 3, 2, 1],
+                        }),
+                        ..Default::default()
+                    }
+                    .into(),
+                )),
                 ..Default::default()
             },
         )
@@ -1618,7 +1618,7 @@ pub mod test {
             .await
             .unwrap();
         let dev_addr = DevAddr::from_str(&get_random_dev_addr_resp.get_ref().dev_addr).unwrap();
-        let mut dev_addr_copy = dev_addr.clone();
+        let mut dev_addr_copy = dev_addr;
         dev_addr_copy.set_dev_addr_prefix(NetID::from_str("000000").unwrap().dev_addr_prefix());
         assert_eq!(dev_addr, dev_addr_copy);
 
@@ -1666,10 +1666,10 @@ pub mod test {
         assert_eq!(2, get_queue_resp.total_count);
         assert_eq!(2, get_queue_resp.result.len());
         assert_eq!(vec![3, 2, 1], get_queue_resp.result[0].data);
-        assert_eq!(false, get_queue_resp.result[0].is_encrypted);
+        assert!(!get_queue_resp.result[0].is_encrypted);
         assert_eq!(0, get_queue_resp.result[0].f_cnt_down);
         assert_eq!(vec![1, 2, 3], get_queue_resp.result[1].data);
-        assert_eq!(true, get_queue_resp.result[1].is_encrypted);
+        assert!(get_queue_resp.result[1].is_encrypted);
         assert_eq!(10, get_queue_resp.result[1].f_cnt_down);
 
         // get next FCntDown (from queue)
@@ -1726,7 +1726,7 @@ pub mod test {
 
     fn get_request<T>(user_id: &Uuid, req: T) -> Request<T> {
         let mut req = Request::new(req);
-        req.extensions_mut().insert(AuthID::User(user_id.clone()));
+        req.extensions_mut().insert(AuthID::User(*user_id));
         req
     }
 }

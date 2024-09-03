@@ -434,7 +434,7 @@ impl TxAck {
             ..Default::default()
         };
 
-        integration::log_event(app.id, &dev.variables, &pl).await;
+        integration::log_event(app.id.into(), &dev.variables, &pl).await;
 
         Ok(())
     }
@@ -483,7 +483,7 @@ impl TxAck {
             tx_info: self.downlink_frame_item.as_ref().unwrap().tx_info.clone(),
         };
 
-        integration::txack_event(app.id, &dev.variables, &pl).await;
+        integration::txack_event(app.id.into(), &dev.variables, &pl).await;
 
         Ok(())
     }
@@ -532,7 +532,7 @@ impl TxAck {
             tx_info: self.downlink_frame_item.as_ref().unwrap().tx_info.clone(),
         };
 
-        integration::txack_event(app.id, &dev.variables, &pl).await;
+        integration::txack_event(app.id.into(), &dev.variables, &pl).await;
 
         Ok(())
     }
@@ -649,7 +649,7 @@ impl TxAck {
         }
 
         let dfl = stream_pb::DownlinkFrameLog {
-            time: dfl.time.clone(),
+            time: dfl.time,
             phy_payload: phy.to_vec()?,
             tx_info: dfl.tx_info.clone(),
             downlink_id: dfl.downlink_id,

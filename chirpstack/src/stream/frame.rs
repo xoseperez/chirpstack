@@ -30,7 +30,7 @@ pub async fn log_uplink_for_gateways(ufl: &stream::UplinkFrameLog) -> Result<()>
             m_type: ufl.m_type,
             dev_addr: ufl.dev_addr.clone(),
             dev_eui: ufl.dev_eui.clone(),
-            time: ufl.time.clone(),
+            time: ufl.time,
             plaintext_f_opts: ufl.plaintext_f_opts,
             plaintext_frm_payload: ufl.plaintext_frm_payload,
         };
@@ -279,7 +279,7 @@ async fn handle_stream(
     match k {
         "up" => {
             trace!(key = %k, id = %stream_id, "Frame-log received from stream");
-            if let redis::Value::Data(b) = v {
+            if let redis::Value::BulkString(b) = v {
                 let pl = stream::UplinkFrameLog::decode(&mut Cursor::new(b))?;
                 let mut phy = lrwn::PhyPayload::from_slice(&pl.phy_payload)?;
                 if pl.plaintext_f_opts {
@@ -320,7 +320,7 @@ async fn handle_stream(
         }
         "down" => {
             trace!(key = %k, id = %stream_id, "frame-log received from stream");
-            if let redis::Value::Data(b) = v {
+            if let redis::Value::BulkString(b) = v {
                 let pl = stream::DownlinkFrameLog::decode(&mut Cursor::new(b))?;
                 let mut phy = lrwn::PhyPayload::from_slice(&pl.phy_payload)?;
                 if pl.plaintext_f_opts {

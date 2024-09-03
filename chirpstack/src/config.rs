@@ -19,6 +19,7 @@ pub struct Configuration {
     pub logging: Logging,
     pub postgresql: Postgresql,
     pub redis: Redis,
+    pub sqlite: Sqlite,
     pub api: Api,
     pub gateway: Gateway,
     pub network: Network,
@@ -31,6 +32,7 @@ pub struct Configuration {
     pub roaming: Roaming,
     pub keks: Vec<Kek>,
     pub regions: Vec<Region>,
+    pub ui: UI,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -85,6 +87,29 @@ impl Default for Redis {
             key_prefix: "".into(),
             max_open_connections: 100,
             min_idle_connections: 0,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(default)]
+pub struct Sqlite {
+    pub path: String,
+    pub pragmas: Vec<String>,
+    pub max_open_connections: u32,
+}
+
+impl Default for Sqlite {
+    fn default() -> Self {
+        Sqlite {
+            path: "sqlite://chirpstack.sqlite".into(),
+            pragmas: vec![
+                // Set busy_timeout to avoid manually managing transaction business/contention
+                "busy_timeout = 1000".to_string(),
+                // Enable foreign-keys since it is off by default
+                "foreign_keys = ON".to_string(),
+            ],
+            max_open_connections: 4,
         }
     }
 }
@@ -409,7 +434,7 @@ impl Default for UserAuthentication {
     }
 }
 
-#[derive(Serialize, Deserialize, Default, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(default)]
 pub struct OpenIdConnect {
     pub registration_enabled: bool,
@@ -422,9 +447,28 @@ pub struct OpenIdConnect {
     pub login_redirect: bool,
     pub login_label: String,
     pub assume_email_verified: bool,
+    pub scopes: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Default, Clone)]
+impl Default for OpenIdConnect {
+    fn default() -> Self {
+        OpenIdConnect {
+            registration_enabled: false,
+            registration_callback_url: "".to_string(),
+            provider_url: "".to_string(),
+            client_id: "".to_string(),
+            client_secret: "".to_string(),
+            redirect_url: "".to_string(),
+            logout_url: "".to_string(),
+            login_redirect: false,
+            login_label: "".to_string(),
+            assume_email_verified: false,
+            scopes: vec!["email".to_string(), "profile".to_string()],
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(default)]
 pub struct OAuth2 {
     pub registration_enabled: bool,
@@ -440,6 +484,28 @@ pub struct OAuth2 {
     pub login_redirect: bool,
     pub login_label: String,
     pub assume_email_verified: bool,
+    pub scopes: Vec<String>,
+}
+
+impl Default for OAuth2 {
+    fn default() -> Self {
+        OAuth2 {
+            registration_enabled: false,
+            registration_callback_url: "".to_string(),
+            client_id: "".to_string(),
+            client_secret: "".to_string(),
+            auth_url: "".to_string(),
+            token_url: "".to_string(),
+            redirect_url: "".to_string(),
+            userinfo_url: "".to_string(),
+            provider: "".to_string(),
+            logout_url: "".to_string(),
+            login_redirect: false,
+            login_label: "".to_string(),
+            assume_email_verified: false,
+            scopes: vec!["email".to_string()],
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Default, Clone)]
@@ -710,6 +776,23 @@ impl Default for GatewayChannel {
             modulation: GatewayChannelModulation::LORA,
             spreading_factors: vec![],
             datarate: 0,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(default)]
+pub struct UI {
+    pub tileserver_url: String,
+    pub map_attribution: String,
+}
+
+impl Default for UI {
+    fn default() -> Self {
+        UI {
+            tileserver_url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png".into(),
+            map_attribution:
+                "&copy; <a href=\"http://osm.org/copyright\">OpenStreetMap</a> contributors".into(),
         }
     }
 }
