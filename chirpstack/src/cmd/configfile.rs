@@ -1,8 +1,9 @@
-use handlebars::{no_escape, Handlebars};
+use handlebars::Handlebars;
 
 use super::super::config;
 
 pub fn run() {
+    #[allow(clippy::useless_vec)]
     let template = vec![
 r#"
 # Logging configuration
@@ -16,7 +17,6 @@ r#"
   #   * INFO
   #   * WARN
   #   * ERROR
-  #   * OFF
   level="{{ logging.level }}"
 
   # Log as JSON.
@@ -996,7 +996,7 @@ r#"
 "#].join("\n");
 
     let mut reg = Handlebars::new();
-    reg.register_escape_fn(no_escape);
+    reg.register_escape_fn(|s| s.to_string().replace('"', r#"\""#));
     let conf = config::get();
     println!(
         "{}",

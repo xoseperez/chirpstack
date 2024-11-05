@@ -1,17 +1,32 @@
 import { useState } from "react";
 
 import { Struct } from "google-protobuf/google/protobuf/struct_pb";
+import { format } from "date-fns";
+import { Timestamp } from "google-protobuf/google/protobuf/timestamp_pb";
 
 import { Switch, notification } from "antd";
-import { Button, Tabs, Space, Card, Row, Form, Input, InputNumber, Popconfirm } from "antd";
+import {
+  Button,
+  Tabs,
+  Space,
+  Card,
+  Row,
+  Form,
+  Input,
+  InputNumber,
+  Popconfirm,
+  DatePicker,
+  DatePickerProps,
+} from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { RedoOutlined, DeleteOutlined } from "@ant-design/icons";
 import { Buffer } from "buffer";
 
-import type { Device, GetDeviceQueueItemsResponse } from "@chirpstack/chirpstack-api-grpc-web/api/device_pb";
 import {
   EnqueueDeviceQueueItemRequest,
   GetDeviceQueueItemsRequest,
+  GetDeviceQueueItemsResponse,
+  Device,
   FlushDeviceQueueRequest,
   DeviceQueueItem,
 } from "@chirpstack/chirpstack-api-grpc-web/api/device_pb";
@@ -34,6 +49,7 @@ interface FormRules {
   hex: string;
   base64: string;
   json: string;
+  expiresAt?: DatePickerProps["value"];
 }
 
 function DeviceQueue(props: IProps) {
@@ -114,6 +130,21 @@ function DeviceQueue(props: IProps) {
         return Buffer.from(record.data as string, "base64").toString("hex");
       },
     },
+    {
+      title: "Expires at",
+      dataIndex: "expiresAt",
+      key: "expiresAt",
+      width: 250,
+      render: (_text, record) => {
+        if (record.expiresAt !== undefined) {
+          const ts = new Date(0);
+          ts.setUTCSeconds(record.expiresAt.seconds);
+          return format(ts, "yyyy-MM-dd HH:mm:ss");
+        } else {
+          return "Never";
+        }
+      },
+    },
   ];
 
   const getPage = (limit: number, offset: number, callbackFunc: GetPageCallbackFunc) => {
@@ -147,6 +178,10 @@ function DeviceQueue(props: IProps) {
     item.setConfirmed(values.confirmed);
     item.setIsEncrypted(values.isEncrypted);
     item.setFCntDown(values.fCntDown);
+
+    if (values.expiresAt !== null && values.expiresAt !== undefined) {
+      item.setExpiresAt(Timestamp.fromDate(values.expiresAt.toDate()));
+    }
 
     if (values.hex !== undefined) {
       item.setData(new Uint8Array(Buffer.from(values.hex, "hex")));
@@ -217,6 +252,13 @@ function DeviceQueue(props: IProps) {
                   <InputNumber min={0} />
                 </Form.Item>
               )}
+              <Form.Item
+                name="expiresAt"
+                label="Expires at"
+                tooltip="If set, the queue-item will automatically expire at the given timestamp if it wasn't sent yet."
+              >
+                <DatePicker showTime />
+              </Form.Item>
             </Space>
           </Row>
           <Tabs defaultActiveKey="1">

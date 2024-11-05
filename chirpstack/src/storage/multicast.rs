@@ -98,6 +98,7 @@ pub struct MulticastGroupQueueItem {
     pub f_port: i16,
     pub data: Vec<u8>,
     pub emit_at_time_since_gps_epoch: Option<i64>,
+    pub expires_at: Option<DateTime<Utc>>,
 }
 
 impl MulticastGroupQueueItem {
@@ -126,6 +127,7 @@ impl Default for MulticastGroupQueueItem {
             f_port: 0,
             data: vec![],
             emit_at_time_since_gps_epoch: None,
+            expires_at: None,
         }
     }
 }
@@ -463,7 +465,7 @@ pub async fn enqueue(
                     for gateway_id in gateway_ids {
                         let qi = MulticastGroupQueueItem {
                             scheduler_run_after: scheduler_run_after_ts,
-                            multicast_group_id: mg.id.into(),
+                            multicast_group_id: mg.id,
                             gateway_id: *gateway_id,
                             f_cnt: mg.f_cnt,
                             f_port: qi.f_port,
@@ -471,6 +473,7 @@ pub async fn enqueue(
                             emit_at_time_since_gps_epoch: Some(
                                 emit_at_time_since_gps_epoch.num_milliseconds(),
                             ),
+                            expires_at: qi.expires_at,
                             ..Default::default()
                         };
 
@@ -537,12 +540,13 @@ pub async fn enqueue(
                     for gateway_id in gateway_ids {
                         let qi = MulticastGroupQueueItem {
                             scheduler_run_after: scheduler_run_after_ts,
-                            multicast_group_id: mg.id.into(),
+                            multicast_group_id: mg.id,
                             gateway_id: *gateway_id,
                             f_cnt: mg.f_cnt,
                             f_port: qi.f_port,
                             data: qi.data.clone(),
                             emit_at_time_since_gps_epoch,
+                            expires_at: qi.expires_at,
                             ..Default::default()
                         };
 
