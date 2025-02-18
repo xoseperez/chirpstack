@@ -15,8 +15,9 @@ use crate::storage::{
     device::{self, DeviceClass},
     device_keys, device_profile, gateway, tenant,
 };
-use crate::{config, test, uplink};
+use crate::{config, storage::fields, test, uplink};
 use chirpstack_api::gw;
+use lrwn::region::CommonName;
 use lrwn::{AES128Key, EUI64Prefix, NetID, EUI64};
 
 #[tokio::test]
@@ -68,18 +69,12 @@ async fn test_fns() {
 
     let recv_time = Utc::now();
 
-    let mut rx_info = gw::UplinkRxInfo {
+    let rx_info = gw::UplinkRxInfo {
         gateway_id: gw.gateway_id.to_string(),
         gw_time: Some(recv_time.into()),
         location: Some(Default::default()),
         ..Default::default()
     };
-    rx_info
-        .metadata
-        .insert("region_config_id".to_string(), "eu868".to_string());
-    rx_info
-        .metadata
-        .insert("region_common_name".to_string(), "EU868".to_string());
 
     let mut tx_info = gw::UplinkTxInfo {
         frequency: 868100000,
@@ -194,6 +189,8 @@ async fn test_fns() {
 
     // Simulate uplink
     uplink::handle_uplink(
+        CommonName::EU868,
+        "eu868".into(),
         Uuid::new_v4(),
         gw::UplinkFrameSet {
             phy_payload: jr_phy.to_vec().unwrap(),
@@ -314,7 +311,7 @@ async fn test_sns() {
     let dk = device_keys::create(device_keys::DeviceKeys {
         dev_eui: dev.dev_eui,
         nwk_key: AES128Key::from_bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
-        dev_nonces: vec![].into(),
+        dev_nonces: fields::DevNonces::default(),
         ..Default::default()
     })
     .await
@@ -499,7 +496,7 @@ async fn test_sns_roaming_not_allowed() {
     let dk = device_keys::create(device_keys::DeviceKeys {
         dev_eui: dev.dev_eui,
         nwk_key: AES128Key::from_bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
-        dev_nonces: vec![].into(),
+        dev_nonces: fields::DevNonces::default(),
         ..Default::default()
     })
     .await

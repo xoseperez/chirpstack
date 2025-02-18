@@ -353,8 +353,9 @@ impl JoinRequest {
 
         self.device_keys = Some(
             match device_keys::validate_incr_join_and_store_dev_nonce(
-                &dev.dev_eui,
-                join_request.dev_nonce as i32,
+                join_request.join_eui,
+                dev.dev_eui,
+                join_request.dev_nonce,
             )
             .await
             {
@@ -704,6 +705,7 @@ impl JoinRequest {
             } else {
                 None
             },
+            region_config_id: self.uplink_frame_set.region_config_id.clone(),
         };
 
         integration::join_event(app.id.into(), &dev.variables, &pl).await;

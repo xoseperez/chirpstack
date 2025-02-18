@@ -10,9 +10,12 @@ use crate::storage::{
     device::{self, DeviceClass},
     device_keys, device_profile, gateway, tenant,
 };
-use crate::{config, gateway::backend as gateway_backend, integration, region, test, uplink};
+use crate::{
+    config, gateway::backend as gateway_backend, integration, region, storage::fields, test, uplink,
+};
 use chirpstack_api::{common, gw, internal, stream};
 use lrwn::keys::get_js_int_key;
+use lrwn::region::CommonName;
 use lrwn::{AES128Key, EUI64};
 
 type Function = Box<dyn Fn() -> Pin<Box<dyn Future<Output = ()>>>>;
@@ -101,35 +104,27 @@ async fn test_gateway_filtering() {
     let dk = device_keys::create(device_keys::DeviceKeys {
         dev_eui: dev.dev_eui,
         nwk_key: AES128Key::from_bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
-        dev_nonces: vec![Some(258)].into(),
+        dev_nonces: {
+            let mut dev_nonces = fields::DevNonces::default();
+            dev_nonces.insert(EUI64::from_be_bytes([1, 2, 3, 4, 5, 6, 7, 8]), 258);
+            dev_nonces
+        },
         ..Default::default()
     })
     .await
     .unwrap();
 
-    let mut rx_info_a = gw::UplinkRxInfo {
+    let rx_info_a = gw::UplinkRxInfo {
         gateway_id: gw_a.gateway_id.to_string(),
         location: Some(Default::default()),
         ..Default::default()
     };
-    rx_info_a
-        .metadata
-        .insert("region_config_id".to_string(), "eu868".to_string());
-    rx_info_a
-        .metadata
-        .insert("region_common_name".to_string(), "EU868".to_string());
 
-    let mut rx_info_b = gw::UplinkRxInfo {
+    let rx_info_b = gw::UplinkRxInfo {
         gateway_id: gw_b.gateway_id.to_string(),
         location: Some(Default::default()),
         ..Default::default()
     };
-    rx_info_b
-        .metadata
-        .insert("region_config_id".to_string(), "eu868".to_string());
-    rx_info_b
-        .metadata
-        .insert("region_common_name".to_string(), "EU868".to_string());
 
     let mut tx_info = gw::UplinkTxInfo {
         frequency: 868100000,
@@ -273,23 +268,21 @@ async fn test_lorawan_10() {
     let dk = device_keys::create(device_keys::DeviceKeys {
         dev_eui: dev.dev_eui,
         nwk_key: AES128Key::from_bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
-        dev_nonces: vec![Some(258)].into(),
+        dev_nonces: {
+            let mut dev_nonces = fields::DevNonces::default();
+            dev_nonces.insert(EUI64::from_be_bytes([1, 2, 3, 4, 5, 6, 7, 8]), 258);
+            dev_nonces
+        },
         ..Default::default()
     })
     .await
     .unwrap();
 
-    let mut rx_info = gw::UplinkRxInfo {
+    let rx_info = gw::UplinkRxInfo {
         gateway_id: gw.gateway_id.to_string(),
         location: Some(Default::default()),
         ..Default::default()
     };
-    rx_info
-        .metadata
-        .insert("region_config_id".to_string(), "eu868".to_string());
-    rx_info
-        .metadata
-        .insert("region_common_name".to_string(), "EU868".to_string());
 
     let mut tx_info = gw::UplinkTxInfo {
         frequency: 868100000,
@@ -929,23 +922,21 @@ async fn test_lorawan_11() {
         dev_eui: dev.dev_eui,
         nwk_key: AES128Key::from_bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
         app_key: AES128Key::from_bytes([16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]),
-        dev_nonces: vec![Some(258)].into(),
+        dev_nonces: {
+            let mut dev_nonces = fields::DevNonces::default();
+            dev_nonces.insert(EUI64::from_be_bytes([1, 2, 3, 4, 5, 6, 7, 8]), 258);
+            dev_nonces
+        },
         ..Default::default()
     })
     .await
     .unwrap();
 
-    let mut rx_info = gw::UplinkRxInfo {
+    let rx_info = gw::UplinkRxInfo {
         gateway_id: gw.gateway_id.to_string(),
         location: Some(Default::default()),
         ..Default::default()
     };
-    rx_info
-        .metadata
-        .insert("region_config_id".to_string(), "eu868".to_string());
-    rx_info
-        .metadata
-        .insert("region_common_name".to_string(), "EU868".to_string());
 
     let mut tx_info = gw::UplinkTxInfo {
         frequency: 868100000,
@@ -1263,6 +1254,8 @@ async fn run_test(t: &Test) {
     }
 
     uplink::handle_uplink(
+        CommonName::EU868,
+        "eu868".into(),
         Uuid::new_v4(),
         gw::UplinkFrameSet {
             phy_payload: t.phy_payload.to_vec().unwrap(),

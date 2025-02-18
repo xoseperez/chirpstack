@@ -63,7 +63,7 @@ pub async fn decode(
             .eval()
             .catch(&ctx)
             .map_err(|e| anyhow!("JS error: {}", e))?;
-        buff_promise.finish()?;
+        () = buff_promise.finish()?;
         let buff: rquickjs::Function = buff.get("Buffer")?;
 
         let input = rquickjs::Object::new(ctx.clone())?;
@@ -154,7 +154,7 @@ pub async fn encode(
             .eval()
             .catch(&ctx)
             .map_err(|e| anyhow!("JS error: {}", e))?;
-        buff_promise.finish()?;
+        () = buff_promise.finish()?;
         let buff: rquickjs::Function = buff.get("Buffer")?;
 
         let input = rquickjs::Object::new(ctx.clone())?;
@@ -227,7 +227,7 @@ pub mod test {
         let out = decode(Utc::now(), 10, &vars, &decoder, &[0x01, 0x02, 0x03]).await;
 
         assert_eq!(
-            "JS error: Error:4:24 'foo' is not defined\n    at decodeUplink (eval_script:4:24)\n    at <eval> (eval_script:8:9)\n",
+            "JS error: Error: foo is not defined\n    at decodeUplink (eval_script:3:1)\n    at <eval> (eval_script:8:9)\n",
             out.err().unwrap().to_string()
         );
     }
@@ -368,7 +368,7 @@ pub mod test {
         };
 
         let out = encode(10, &vars, &encoder, &input).await;
-        assert_eq!("JS error: Error:4:24 'foo' is not defined\n    at encodeDownlink (eval_script:4:24)\n    at <eval> (eval_script:8:9)\n", out.err().unwrap().to_string());
+        assert_eq!("JS error: Error: foo is not defined\n    at encodeDownlink (eval_script:3:1)\n    at <eval> (eval_script:8:9)\n", out.err().unwrap().to_string());
     }
 
     #[tokio::test]

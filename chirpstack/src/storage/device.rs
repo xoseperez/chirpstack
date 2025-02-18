@@ -216,6 +216,15 @@ pub struct Filters {
     pub search: Option<String>,
 }
 
+#[derive(Clone, Debug, Default)]
+pub enum OrderBy {
+    #[default]
+    Name,
+    DevEui,
+    LastSeenAt,
+    DeviceProfileName,
+}
+
 #[derive(QueryableByName, PartialEq, Eq, Debug)]
 pub struct DevicesActiveInactive {
     #[diesel(sql_type = diesel::sql_types::BigInt)]
@@ -299,6 +308,7 @@ pub async fn get(dev_eui: &EUI64) -> Result<Device, Error> {
 // On Ok response, the PhyPayload f_cnt will be set to the full 32bit frame-counter based on the
 // device-session context.
 pub async fn get_for_phypayload_and_incr_f_cnt_up(
+    region_config_id: &str,
     relayed: bool,
     phy: &mut lrwn::PhyPayload,
     tx_dr: u8,
@@ -341,7 +351,17 @@ pub async fn get_for_phypayload_and_incr_f_cnt_up(
                 }
 
                 for ds in &mut sessions {
-                    if ds.dev_addr != dev_addr.to_vec() {
+                    // Set the region_config_id if it is empty, e.g. after a ChirpStack v3 to
+                    // ChirpStack v4 migration.
+                    if ds.region_config_id.is_empty() {
+                        ds.region_config_id = region_config_id.into();
+                    }
+                    // Check that the DevAddr and region_config_id are equal.
+                    // The latter is needed because we must assure that the uplink was received
+                    // under the same region as the device was activated. In case the uplink was
+                    // received under two region configurations, this will start two uplink flows,
+                    // each with their own region_config_id associated.
+                    if ds.region_config_id != region_config_id || ds.dev_addr != dev_addr.to_vec() {
                         continue;
                     }
 
@@ -595,6 +615,8 @@ pub async fn list(
     limit: i64,
     offset: i64,
     filters: &Filters,
+    order_by: OrderBy,
+    order_by_desc: bool,
 ) -> Result<Vec<DeviceListItem>, Error> {
     let mut q = device::dsl::device
         .inner_join(device_profile::table)
@@ -637,8 +659,26 @@ pub async fn list(
         );
     }
 
-    q.order_by(device::dsl::name)
-        .limit(limit)
+    q = match order_by_desc {
+        true => match order_by {
+            OrderBy::Name => q.order_by(device::dsl::name.desc()),
+            OrderBy::DevEui => q.order_by(device::dsl::dev_eui.desc()),
+            OrderBy::LastSeenAt => q
+                .order_by(device::dsl::last_seen_at.desc())
+                .then_order_by(device::dsl::name),
+            OrderBy::DeviceProfileName => q.order_by(device_profile::dsl::name.desc()),
+        },
+        false => match order_by {
+            OrderBy::Name => q.order_by(device::dsl::name),
+            OrderBy::DevEui => q.order_by(device::dsl::dev_eui),
+            OrderBy::LastSeenAt => q
+                .order_by(device::dsl::last_seen_at)
+                .then_order_by(device::dsl::name),
+            OrderBy::DeviceProfileName => q.order_by(device_profile::dsl::name),
+        },
+    };
+
+    q.limit(limit)
         .offset(offset)
         .load(&mut get_async_db_conn().await?)
         .await
@@ -864,6 +904,8 @@ pub mod test {
         count: usize,
         limit: i64,
         offset: i64,
+        order: OrderBy,
+        order_by_desc: bool,
     }
 
     pub async fn create_device(
@@ -931,6 +973,8 @@ pub mod test {
                 count: 1,
                 limit: 10,
                 offset: 0,
+                order: OrderBy::Name,
+                order_by_desc: false,
             },
             FilterTest {
                 filters: Filters {
@@ -942,6 +986,8 @@ pub mod test {
                 count: 0,
                 limit: 10,
                 offset: 0,
+                order: OrderBy::Name,
+                order_by_desc: false,
             },
             FilterTest {
                 filters: Filters {
@@ -953,6 +999,8 @@ pub mod test {
                 count: 1,
                 limit: 10,
                 offset: 0,
+                order: OrderBy::Name,
+                order_by_desc: false,
             },
             FilterTest {
                 filters: Filters {
@@ -964,6 +1012,8 @@ pub mod test {
                 count: 1,
                 limit: 10,
                 offset: 0,
+                order: OrderBy::Name,
+                order_by_desc: false,
             },
             FilterTest {
                 filters: Filters {
@@ -975,6 +1025,8 @@ pub mod test {
                 count: 0,
                 limit: 10,
                 offset: 0,
+                order: OrderBy::Name,
+                order_by_desc: false,
             },
         ];
 
@@ -982,7 +1034,15 @@ pub mod test {
             let count = get_count(&tst.filters).await.unwrap() as usize;
             assert_eq!(tst.count, count);
 
-            let items = list(tst.limit, tst.offset, &tst.filters).await.unwrap();
+            let items = list(
+                tst.limit,
+                tst.offset,
+                &tst.filters,
+                tst.order,
+                tst.order_by_desc,
+            )
+            .await
+            .unwrap();
             assert_eq!(
                 tst.devs
                     .iter()
@@ -1162,6 +1222,7 @@ pub mod test {
                 dev_addr: Some(DevAddr::from_be_bytes([1, 2, 3, 4])),
                 device_session: Some(
                     internal::DeviceSession {
+                        region_config_id: "eu868".into(),
                         dev_addr: vec![0x01, 0x02, 0x03, 0x04],
                         s_nwk_s_int_key: vec![
                             0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
@@ -1191,6 +1252,7 @@ pub mod test {
                 dev_addr: Some(DevAddr::from_be_bytes([1, 2, 3, 4])),
                 device_session: Some(
                     internal::DeviceSession {
+                        region_config_id: "eu868".into(),
                         dev_addr: vec![0x01, 0x02, 0x03, 0x04],
                         s_nwk_s_int_key: vec![
                             0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02,
@@ -1220,6 +1282,7 @@ pub mod test {
                 secondary_dev_addr: Some(DevAddr::from_be_bytes([4, 3, 2, 1])),
                 device_session: Some(
                     internal::DeviceSession {
+                        region_config_id: "eu868".into(),
                         dev_addr: vec![0x01, 0x02, 0x03, 0x04],
                         s_nwk_s_int_key: vec![
                             0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03,
@@ -1235,6 +1298,7 @@ pub mod test {
                         ],
                         f_cnt_up: 300,
                         pending_rejoin_device_session: Some(Box::new(internal::DeviceSession {
+                            region_config_id: "eu868".into(),
                             dev_addr: vec![0x04, 0x03, 0x02, 0x01],
                             s_nwk_s_int_key: vec![
                                 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04,
@@ -1265,6 +1329,7 @@ pub mod test {
                 dev_addr: Some(DevAddr::from_be_bytes([1, 2, 3, 4])),
                 device_session: Some(
                     internal::DeviceSession {
+                        region_config_id: "eu868".into(),
                         dev_addr: vec![0x01, 0x02, 0x03, 0x04],
                         s_nwk_s_int_key: vec![
                             0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05,
@@ -1476,7 +1541,7 @@ pub mod test {
                 pl.fhdr.f_cnt = tst.f_cnt % (1 << 16);
             }
 
-            let d = get_for_phypayload_and_incr_f_cnt_up(false, &mut phy, 0, 0).await;
+            let d = get_for_phypayload_and_incr_f_cnt_up("eu868", false, &mut phy, 0, 0).await;
             if tst.expected_error.is_some() {
                 assert!(d.is_err());
                 assert_eq!(
