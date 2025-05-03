@@ -1,8 +1,6 @@
-#[macro_use]
-extern crate lazy_static;
-
 use std::io::Cursor;
 use std::str::FromStr;
+use std::sync::LazyLock;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -13,10 +11,8 @@ use tracing_subscriber::{filter, prelude::*};
 
 use chirpstack_api::{integration as integration_pb, prost::Message};
 
-lazy_static! {
-    static ref INTEGRATION: RwLock<Option<Box<dyn IntegrationTrait + Sync + Send>>> =
-        RwLock::new(None);
-}
+static INTEGRATION: LazyLock<RwLock<Option<Box<dyn IntegrationTrait + Sync + Send>>>> =
+    LazyLock::new(|| RwLock::new(None));
 
 #[derive(Default, Deserialize, Clone)]
 #[serde(default)]
@@ -203,7 +199,7 @@ impl Integration {
 
             for stream_key in &srr.keys {
                 for stream_id in &stream_key.ids {
-                    redis::cmd("XACK")
+                    let _: () = redis::cmd("XACK")
                         .arg(&key)
                         .arg(&self.consumer_group)
                         .arg(&stream_id.id)

@@ -138,6 +138,7 @@ function DeviceQueue(props: IProps) {
   const getPage = (
     limit: number,
     offset: number,
+    filters: object,
     orderBy: string | void,
     orderByDesc: boolean | void,
     callbackFunc: GetPageCallbackFunc,
@@ -267,7 +268,7 @@ function DeviceQueue(props: IProps) {
               </Form.Item>
             </Tabs.TabPane>
             <Tabs.TabPane tab="JSON" key="3">
-              <CodeEditor name="json" />
+              <CodeEditor name="json" mode="json" />
             </Tabs.TabPane>
           </Tabs>
           <Button type="primary" htmlType="submit">

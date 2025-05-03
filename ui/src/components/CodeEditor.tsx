@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { Controlled as CodeMirror } from "react-codemirror2";
-import type { Editor, EditorChange } from "codemirror";
 
 import { Form } from "antd";
+import AceEditor from "react-ace";
 
-import "codemirror/mode/javascript/javascript";
+import "ace-builds/src-noconflict/mode-javascript";
+import "ace-builds/src-noconflict/mode-json";
+import "ace-builds/src-noconflict/theme-github";
 
 interface IProps {
   label?: string;
@@ -12,40 +13,35 @@ interface IProps {
   required?: boolean;
   disabled?: boolean;
   tooltip?: string;
+  mode?: string;
 }
 
 function CodeEditor(props: IProps) {
   const form = Form.useFormInstance();
   const [value, setValue] = useState<string>("");
-  const [reloadKey, setReloadKey] = useState<number>(1);
 
   useEffect(() => {
-    setValue(form.getFieldValue(props.name));
-    setReloadKey(k => k + 1);
+    setValue(form.getFieldValue(props.name) || "");
   }, [form, props]);
 
-  const handleChange = (editor: Editor, data: EditorChange, newCode: string) => {
-    setValue(newCode);
+  const onChange = (newValue: string) => {
+    setValue(newValue);
     form.setFieldsValue({
-      [props.name]: newCode,
+      [props.name]: newValue,
     });
-  };
-
-  const codeMirrorOptions = {
-    lineNumbers: true,
-    mode: "javascript",
-    theme: "base16-light",
-    readOnly: props.disabled,
   };
 
   return (
     <Form.Item label={props.label} name={props.name} tooltip={props.tooltip}>
       <div style={{ border: "1px solid #cccccc" }}>
-        <CodeMirror
-          key={`code-editor-refresh-${reloadKey}`}
+        <AceEditor
+          mode={props.mode || "javascript"}
+          theme="github"
+          onChange={onChange}
           value={value}
-          options={codeMirrorOptions}
-          onBeforeChange={handleChange}
+          width="100%"
+          height="600px"
+          editorProps={{ $blockScrolling: true }}
         />
       </div>
     </Form.Item>

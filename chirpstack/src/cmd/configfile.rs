@@ -3,9 +3,7 @@ use handlebars::Handlebars;
 use super::super::config;
 
 pub fn run() {
-    #[allow(clippy::useless_vec)]
-    let template = vec![
-r#"
+    let template = r#"
 # Logging configuration
 [logging]
 
@@ -21,10 +19,11 @@ r#"
 
   # Log as JSON.
   json={{ logging.json }}
-"#,
-#[cfg(feature = "postgres")]
-r#"
+
+
 # PostgreSQL configuration.
+#
+# Note: this option is only available to ChirpStack with PostgreSQL support (default).
 [postgresql]
 
   # PostgreSQL DSN.
@@ -49,16 +48,20 @@ r#"
   # the server-certificate is not signed by a CA in the platform certificate
   # store.
   ca_cert="{{ postgresql.ca_cert }}"
-"#,
-#[cfg(feature = "sqlite")]
-r#"
+
+
 # SQLite configuration.
+#
+# Note: this option is only available to ChirpStack with SQLite support.
 [sqlite]
 
   # Sqlite DB path.
   #
-  # Format example: sqlite:///<DATABASE>.
+  # Make sure the path exists and that the ChirpStack process has read-write
+  # access to it. If the database file does not exists, it will be created the
+  # first time ChirpStack starts.
   #
+  # Format example: sqlite:///<DATABASE>.
   path="{{ sqlite.path }}"
 
   # Max open connections.
@@ -77,8 +80,8 @@ r#"
     "{{this}}",
     {{/each}}
   ]
-"#,
-r#"
+
+
 # Redis configuration.
 [redis]
 
@@ -794,6 +797,11 @@ r#"
     #   #
     #   # Set this to enable client-certificate authentication with the join-server.
     #   tls_key="/path/to/tls_key.pem"
+
+    #   # Authorization header.
+    #   #
+    #   # Optional value of the Authorization header, e.g. token or password.
+    #   authorization_header="Bearer sometoken"
     {{#each join_server.servers}}
 
     [[join_server.servers]]
@@ -804,6 +812,7 @@ r#"
       ca_cert="{{ this.ca_cert }}"
       tls_cert="{{ this.tls_cert }}"
       tls_key="{{ this.tls_key }}"
+      authorization_header="{{ this.authorization_header }}"
     {{/each}}
 
 
@@ -993,14 +1002,14 @@ r#"
   # default tileserver_url (OSM). If you configure a different tile-server, you
   # might need to update the map_attribution.
   map_attribution="{{ui.map_attribution}}"
-"#].join("\n");
+"#;
 
     let mut reg = Handlebars::new();
     reg.register_escape_fn(|s| s.to_string().replace('"', r#"\""#));
     let conf = config::get();
     println!(
         "{}",
-        reg.render_template(&template, &conf)
+        reg.render_template(template, &conf)
             .expect("render configfile error")
     );
 }

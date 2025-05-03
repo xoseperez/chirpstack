@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 use anyhow::{Context, Result};
 use diesel_async::RunQueryDsl;
@@ -8,9 +9,7 @@ use uuid::Uuid;
 use super::{error::Error, fields, get_async_db_conn};
 use lrwn::EUI64;
 
-lazy_static! {
-    static ref SEARCH_TAG_RE: Regex = Regex::new(r"([^ ]+):([^ ]+)").unwrap();
-}
+static SEARCH_TAG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"([^ ]+):([^ ]+)").unwrap());
 
 #[derive(QueryableByName, PartialEq, Debug)]
 pub struct SearchResult {
@@ -449,8 +448,8 @@ pub mod test {
         let _d = device::create(device::Device {
             dev_eui: EUI64::from_str("0203040506070809").unwrap(),
             name: "test-device".into(),
-            application_id: a.id.clone(),
-            device_profile_id: dp.id.clone(),
+            application_id: a.id,
+            device_profile_id: dp.id,
             tags: build_tags(&[("common_tag", "value"), ("mytag", "dev_value")]),
             ..Default::default()
         })
