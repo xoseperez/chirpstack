@@ -149,7 +149,9 @@ impl Flow {
             group_type: self.fuota_deployment.multicast_group_type.clone(),
             frequency: self.fuota_deployment.multicast_frequency,
             dr: self.fuota_deployment.multicast_dr,
-            class_b_ping_slot_nb_k: self.fuota_deployment.multicast_class_b_ping_slot_nb_k,
+            class_b_ping_slot_periodicity: self
+                .fuota_deployment
+                .multicast_class_b_ping_slot_periodicity,
             class_c_scheduling_type: self.fuota_deployment.multicast_class_c_scheduling_type,
             ..Default::default()
         })
@@ -389,10 +391,17 @@ impl Flow {
                         frag_size: fragment_size as u8,
                         padding: padding as u8,
                         control: fragmentation::v1::FragSessionSetuReqPayloadControl {
-                            block_ack_delay: 0,
-                            fragmentation_matrix: 0,
+                            block_ack_delay: self.fuota_deployment.fragmentation_block_ack_delay
+                                as u8,
+                            fragmentation_matrix: self.fuota_deployment.fragmentation_matrix as u8,
                         },
-                        descriptor: [0, 0, 0, 0],
+                        descriptor: {
+                            let mut d = [0u8; 4];
+                            if self.fuota_deployment.fragmentation_descriptor.len() == 4 {
+                                d.copy_from_slice(&self.fuota_deployment.fragmentation_descriptor);
+                            }
+                            d
+                        },
                     },
                 )
                 .to_vec()?,
@@ -442,11 +451,20 @@ impl Flow {
                             frag_size: fragment_size as u8,
                             padding: padding as u8,
                             control: fragmentation::v2::FragSessionSetuReqPayloadControl {
-                                block_ack_delay: 0,
+                                block_ack_delay: self.fuota_deployment.fragmentation_block_ack_delay
+                                    as u8,
                                 frag_algo: 0,
                                 ack_reception: false,
                             },
-                            descriptor: [0, 0, 0, 0],
+                            descriptor: {
+                                let mut d = [0u8; 4];
+                                if self.fuota_deployment.fragmentation_descriptor.len() == 4 {
+                                    d.copy_from_slice(
+                                        &self.fuota_deployment.fragmentation_descriptor,
+                                    );
+                                }
+                                d
+                            },
                             mic,
                             session_cnt,
                         },
@@ -577,7 +595,7 @@ impl Flow {
                                 time_out_periodicity:
                                     multicastsetup::v1::McClassBSessionReqPayloadTimeOutPeriodicity {
                                         time_out: self.fuota_deployment.multicast_timeout as u8,
-                                        periodicity: self.fuota_deployment.multicast_class_b_ping_slot_nb_k
+                                        periodicity: self.fuota_deployment.multicast_class_b_ping_slot_periodicity
                                             as u8,
                                     },
                                 dl_frequ: self.fuota_deployment.multicast_frequency as u32,
@@ -619,7 +637,7 @@ impl Flow {
                                 time_out_periodicity:
                                     multicastsetup::v2::McClassBSessionReqPayloadTimeOutPeriodicity {
                                         time_out: self.fuota_deployment.multicast_timeout as u8,
-                                        periodicity: self.fuota_deployment.multicast_class_b_ping_slot_nb_k
+                                        periodicity: self.fuota_deployment.multicast_class_b_ping_slot_periodicity
                                             as u8,
                                     },
                                 dl_frequ: self.fuota_deployment.multicast_frequency as u32,

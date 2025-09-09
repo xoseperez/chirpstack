@@ -4,13 +4,12 @@ use std::str::FromStr;
 use std::time::SystemTime;
 
 use bigdecimal::ToPrimitive;
-use chrono::{DateTime, Local, Utc};
-use tonic::{Request, Response, Status};
-use uuid::Uuid;
-
 use chirpstack_api::api::device_service_server::DeviceService;
+use chirpstack_api::tonic::{self, Request, Response, Status};
 use chirpstack_api::{api, common, internal};
+use chrono::{DateTime, Local, Utc};
 use lrwn::{AES128Key, DevAddr, EUI64};
+use uuid::Uuid;
 
 use super::auth::validator;
 use super::error::ToStatus;
@@ -1059,13 +1058,28 @@ impl DeviceService for Device {
         &self,
         request: Request<api::EnqueueDeviceQueueItemRequest>,
     ) -> Result<Response<api::EnqueueDeviceQueueItemResponse>, Status> {
-        let req_qi = match &request.get_ref().queue_item {
+        let req = request.get_ref();
+
+        let req_qi = match &req.queue_item {
             Some(v) => v,
             None => {
                 return Err(Status::invalid_argument("queue_item is missing"));
             }
         };
         let dev_eui = EUI64::from_str(&req_qi.dev_eui).map_err(|e| e.status())?;
+
+        if req.flush_queue {
+            self.validator
+                .validate(
+                    request.extensions(),
+                    validator::ValidateDeviceQueueAccess::new(validator::Flag::Delete, dev_eui),
+                )
+                .await?;
+
+            device_queue::flush_for_dev_eui(&dev_eui)
+                .await
+                .map_err(|e| e.status())?;
+        }
 
         self.validator
             .validate(
@@ -1075,6 +1089,7 @@ impl DeviceService for Device {
             .await?;
 
         let mut data = req_qi.data.clone();
+        let mut f_port = req_qi.f_port as u8;
 
         if let Some(obj) = &req_qi.object {
             let dev = device::get(&dev_eui).await.map_err(|e| e.status())?;
@@ -1082,7 +1097,7 @@ impl DeviceService for Device {
                 .await
                 .map_err(|e| e.status())?;
 
-            data = codec::struct_to_binary(
+            (f_port, data) = codec::struct_to_binary(
                 dp.payload_codec_runtime,
                 req_qi.f_port as u8,
                 &dev.variables,
@@ -1096,7 +1111,7 @@ impl DeviceService for Device {
         let qi = device_queue::DeviceQueueItem {
             id: Uuid::new_v4().into(),
             dev_eui,
-            f_port: req_qi.f_port as i16,
+            f_port: f_port as i16,
             confirmed: req_qi.confirmed,
             is_encrypted: req_qi.is_encrypted,
             f_cnt_down: if req_qi.is_encrypted {
@@ -1664,6 +1679,7 @@ pub mod test {
                     data: vec![3, 2, 1],
                     ..Default::default()
                 }),
+                ..Default::default()
             },
         );
         let _ = service.enqueue(enqueue_req).await.unwrap();
@@ -1680,6 +1696,7 @@ pub mod test {
                     is_encrypted: true,
                     ..Default::default()
                 }),
+                ..Default::default()
             },
         );
         let _ = service.enqueue(enqueue_req).await.unwrap();
@@ -1715,6 +1732,38 @@ pub mod test {
             .await
             .unwrap();
         assert_eq!(11, get_next_f_cnt_resp.get_ref().f_cnt_down);
+
+        // enqueue with flush_queue
+        let enqueue_req = get_request(
+            &u.id,
+            api::EnqueueDeviceQueueItemRequest {
+                queue_item: Some(api::DeviceQueueItem {
+                    dev_eui: "0102030405060708".into(),
+                    confirmed: true,
+                    f_port: 2,
+                    f_cnt_down: 10,
+                    data: vec![4, 5, 6],
+                    is_encrypted: true,
+                    ..Default::default()
+                }),
+                flush_queue: true,
+            },
+        );
+        let _ = service.enqueue(enqueue_req).await.unwrap();
+
+        // get queue
+        let get_queue_req = get_request(
+            &u.id,
+            api::GetDeviceQueueItemsRequest {
+                dev_eui: "0102030405060708".into(),
+                count_only: false,
+            },
+        );
+        let get_queue_resp = service.get_queue(get_queue_req).await.unwrap();
+        let get_queue_resp = get_queue_resp.get_ref();
+        assert_eq!(1, get_queue_resp.total_count);
+        assert_eq!(1, get_queue_resp.result.len());
+        assert_eq!(vec![4, 5, 6], get_queue_resp.result[0].data);
 
         // flush queue
         let flush_queue_req = get_request(

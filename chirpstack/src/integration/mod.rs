@@ -23,7 +23,6 @@ mod http;
 mod ifttt;
 mod influxdb;
 mod kafka;
-mod loracloud;
 #[cfg(test)]
 pub mod mock;
 mod mqtt;
@@ -166,9 +165,6 @@ async fn for_application_id(id: Uuid) -> Result<Vec<Box<dyn Integration + Sync +
             }
             application::IntegrationConfiguration::InfluxDb(conf) => {
                 Box::new(influxdb::Integration::new(conf)?)
-            }
-            application::IntegrationConfiguration::LoraCloud(conf) => {
-                Box::new(loracloud::Integration::new(conf))
             }
             application::IntegrationConfiguration::MyDevices(conf) => {
                 Box::new(mydevices::Integration::new(conf))
@@ -543,10 +539,12 @@ async fn handle_down_command(application_id: String, pl: integration::DownlinkCo
         }
 
         let mut data = pl.data.clone();
+        let mut f_port = pl.f_port as u8;
+
         if let Some(obj) = &pl.object {
             let dp = device_profile::get(&dev.device_profile_id).await?;
 
-            data = codec::struct_to_binary(
+            (f_port, data) = codec::struct_to_binary(
                 dp.payload_codec_runtime,
                 pl.f_port as u8,
                 &dev.variables,
@@ -561,10 +559,19 @@ async fn handle_down_command(application_id: String, pl: integration::DownlinkCo
                 true => Uuid::new_v4().into(),
                 false => Uuid::from_str(&pl.id)?.into(),
             },
-            f_port: pl.f_port as i16,
+            f_port: f_port as i16,
             confirmed: pl.confirmed,
             data,
             dev_eui,
+            expires_at: if let Some(expires_at) = pl.expires_at {
+                Some(
+                    expires_at
+                        .try_into()
+                        .map_err(|e| anyhow!("Parse expires_at error: {}", e))?,
+                )
+            } else {
+                None
+            },
             ..Default::default()
         };
 

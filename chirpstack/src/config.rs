@@ -137,6 +137,8 @@ pub struct Gateway {
     pub ca_cert: String,
     pub ca_key: String,
     pub allow_unknown_gateways: bool,
+    #[serde(with = "humantime_serde")]
+    pub rx_timestamp_max_drift: Duration,
 }
 
 impl Default for Gateway {
@@ -146,6 +148,7 @@ impl Default for Gateway {
             ca_cert: "".to_string(),
             ca_key: "".to_string(),
             allow_unknown_gateways: false,
+            rx_timestamp_max_drift: Duration::from_secs(30),
         }
     }
 }
@@ -352,6 +355,7 @@ pub struct AmqpIntegration {
     pub url: String,
     pub json: bool,
     pub event_routing_key: String,
+    pub exchange: String,
 }
 
 impl Default for AmqpIntegration {
@@ -361,6 +365,7 @@ impl Default for AmqpIntegration {
             json: true,
             event_routing_key: "application.{{application_id}}.device.{{dev_eui}}.event.{{event}}"
                 .to_string(),
+            exchange: "amq.topic".to_string(),
         }
     }
 }

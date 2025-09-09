@@ -1,7 +1,6 @@
-use tonic::{Request, Response, Status};
-
 use chirpstack_api::api;
 use chirpstack_api::api::device_profile_template_service_server::DeviceProfileTemplateService;
+use chirpstack_api::tonic::{self, Request, Response, Status};
 
 use super::auth::validator;
 use super::error::ToStatus;
@@ -60,7 +59,7 @@ impl DeviceProfileTemplateService for DeviceProfileTemplate {
             supports_class_b: req_dp.supports_class_b,
             supports_class_c: req_dp.supports_class_c,
             class_b_timeout: req_dp.class_b_timeout as i32,
-            class_b_ping_slot_nb_k: req_dp.class_b_ping_slot_nb_k as i32,
+            class_b_ping_slot_periodicity: req_dp.class_b_ping_slot_periodicity as i32,
             class_b_ping_slot_dr: req_dp.class_b_ping_slot_dr as i16,
             class_b_ping_slot_freq: req_dp.class_b_ping_slot_freq as i64,
             class_c_timeout: req_dp.class_c_timeout as i32,
@@ -132,7 +131,7 @@ impl DeviceProfileTemplateService for DeviceProfileTemplate {
                 supports_class_b: dp.supports_class_b,
                 supports_class_c: dp.supports_class_c,
                 class_b_timeout: dp.class_b_timeout as u32,
-                class_b_ping_slot_nb_k: dp.class_b_ping_slot_nb_k as u32,
+                class_b_ping_slot_periodicity: dp.class_b_ping_slot_periodicity as u32,
                 class_b_ping_slot_dr: dp.class_b_ping_slot_dr as u32,
                 class_b_ping_slot_freq: dp.class_b_ping_slot_freq as u32,
                 class_c_timeout: dp.class_c_timeout as u32,
@@ -201,7 +200,7 @@ impl DeviceProfileTemplateService for DeviceProfileTemplate {
             supports_class_b: req_dp.supports_class_b,
             supports_class_c: req_dp.supports_class_c,
             class_b_timeout: req_dp.class_b_timeout as i32,
-            class_b_ping_slot_nb_k: req_dp.class_b_ping_slot_nb_k as i32,
+            class_b_ping_slot_periodicity: req_dp.class_b_ping_slot_periodicity as i32,
             class_b_ping_slot_dr: req_dp.class_b_ping_slot_dr as i16,
             class_b_ping_slot_freq: req_dp.class_b_ping_slot_freq as i64,
             class_c_timeout: req_dp.class_c_timeout as i32,

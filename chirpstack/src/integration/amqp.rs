@@ -27,6 +27,7 @@ pub struct Integration<'a> {
     templates: Handlebars<'a>,
     json: bool,
     url: String,
+    exchange: String,
 }
 
 #[derive(Serialize)]
@@ -49,6 +50,7 @@ impl<'a> Integration<'a> {
             templates,
             url: conf.url.clone(),
             json: conf.json,
+            exchange: conf.exchange.clone(),
         };
         i.connect().await?;
 
@@ -65,7 +67,7 @@ impl<'a> Integration<'a> {
             // Use tokio executor and reactor.
             // At the moment the reactor is only available for unix.
             .with_executor(tokio_executor_trait::Tokio::current())
-            .with_reactor(tokio_reactor_trait::Tokio);
+            .with_reactor(tokio_reactor_trait::Tokio::current());
 
         let conn = Connection::connect(&self.url, options).await?;
         let chan = conn.create_channel().await?;
@@ -90,7 +92,7 @@ impl<'a> Integration<'a> {
                 .as_ref()
                 .unwrap()
                 .basic_publish(
-                    "amq.topic",
+                    &self.exchange,
                     &routing_key,
                     BasicPublishOptions::default(),
                     b,
@@ -262,17 +264,17 @@ pub mod test {
 
         let conf = Config {
             url: env::var("TEST_AMQP_URL").unwrap(),
-            json: true,
-            event_routing_key: "application.{{application_id}}.device.{{dev_eui}}.event.{{event}}"
-                .to_string(),
+            ..Default::default()
         };
+
+        let i = Integration::new(&conf).await.unwrap();
 
         let conn = loop {
             match Connection::connect(
                 &conf.url,
                 ConnectionProperties::default()
                     .with_executor(tokio_executor_trait::Tokio::current())
-                    .with_reactor(tokio_reactor_trait::Tokio),
+                    .with_reactor(tokio_reactor_trait::Tokio::current()),
             )
             .await
             {
@@ -315,8 +317,6 @@ pub mod test {
             )
             .await
             .unwrap();
-
-        let i = Integration::new(&conf).await.unwrap();
 
         let pl = integration::UplinkEvent {
             device_info: Some(integration::DeviceInfo {

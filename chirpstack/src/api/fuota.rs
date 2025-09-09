@@ -1,12 +1,11 @@
 use std::str::FromStr;
 
-use chrono::Utc;
-use tonic::{Request, Response, Status};
-use uuid::Uuid;
-
 use chirpstack_api::api;
 use chirpstack_api::api::fuota_service_server::FuotaService;
+use chirpstack_api::tonic::{self, Request, Response, Status};
+use chrono::Utc;
 use lrwn::EUI64;
+use uuid::Uuid;
 
 use crate::aeskey::get_random_aes_key;
 use crate::api::auth::validator;
@@ -63,7 +62,8 @@ impl FuotaService for Fuota {
                 .multicast_class_c_scheduling_type()
                 .from_proto(),
             multicast_dr: req_dp.multicast_dr as i16,
-            multicast_class_b_ping_slot_nb_k: req_dp.multicast_class_b_ping_slot_nb_k as i16,
+            multicast_class_b_ping_slot_periodicity: req_dp.multicast_class_b_ping_slot_periodicity
+                as i16,
             multicast_frequency: req_dp.multicast_frequency as i64,
             multicast_timeout: req_dp.multicast_timeout as i16,
             unicast_max_retry_count: req_dp.unicast_max_retry_count as i16,
@@ -138,7 +138,8 @@ impl FuotaService for Fuota {
                     .to_proto()
                     .into(),
                 multicast_dr: dp.multicast_dr as u32,
-                multicast_class_b_ping_slot_nb_k: dp.multicast_class_b_ping_slot_nb_k as u32,
+                multicast_class_b_ping_slot_periodicity: dp.multicast_class_b_ping_slot_periodicity
+                    as u32,
                 multicast_frequency: dp.multicast_frequency as u32,
                 multicast_timeout: dp.multicast_timeout as u32,
                 unicast_max_retry_count: dp.unicast_max_retry_count as u32,
@@ -217,7 +218,8 @@ impl FuotaService for Fuota {
                 .multicast_class_c_scheduling_type()
                 .from_proto(),
             multicast_dr: req_dp.multicast_dr as i16,
-            multicast_class_b_ping_slot_nb_k: req_dp.multicast_class_b_ping_slot_nb_k as i16,
+            multicast_class_b_ping_slot_periodicity: req_dp.multicast_class_b_ping_slot_periodicity
+                as i16,
             multicast_frequency: req_dp.multicast_frequency as i64,
             multicast_timeout: req_dp.multicast_timeout as i16,
             unicast_max_retry_count: req_dp.unicast_max_retry_count as i16,
