@@ -26,7 +26,6 @@ const LPP_PERCENTAGE: u8 = 120;
 const LPP_ALTITUDE: u8 = 121;
 const LPP_CONCENTRATION: u8 = 125;
 const LPP_POWER: u8 = 128;
-const LPP_DISTANCE: u8 = 130;
 const LPP_ENERGY: u8 = 131;
 const LPP_DIRECTION: u8 = 132;
 const LPP_COLOUR: u8 = 135;
@@ -90,7 +89,6 @@ struct CayenneLpp {
     altitude: BTreeMap<u8, u16>,
     concentration: BTreeMap<u8, u16>,
     power: BTreeMap<u8, u16>,
-    distance: BTreeMap<u8, f64>,
     energy: BTreeMap<u8, f64>,
     colour: BTreeMap<u8, Colour>,
     direction: BTreeMap<u8, u16>,
@@ -131,7 +129,6 @@ impl CayenneLpp {
                 LPP_ALTITUDE => lpp.set_altitude(buf[0], &mut cur)?,
                 LPP_CONCENTRATION => lpp.set_concentration(buf[0], &mut cur)?,
                 LPP_POWER => lpp.set_power(buf[0], &mut cur)?,
-                LPP_DISTANCE => lpp.set_distance(buf[0], &mut cur)?,
                 LPP_ENERGY => lpp.set_energy(buf[0], &mut cur)?,
                 LPP_DIRECTION => lpp.set_direction(buf[0], &mut cur)?,
                 LPP_COLOUR => lpp.set_colour(buf[0], &mut cur)?,
@@ -192,7 +189,6 @@ impl CayenneLpp {
                     .set_concentration_from_value(v)
                     .context("concentration")?,
                 "power" => lpp.set_power_from_value(v).context("power")?,
-                "distance" => lpp.set_distance_from_value(v).context("distance")?,
                 "energy" => lpp.set_energy_from_value(v).context("energy")?,
                 "colour" => lpp.set_colour_from_value(v).context("colour")?,
                 "direction" => lpp.set_direction_from_value(v).context("direction")?,
@@ -374,14 +370,6 @@ impl CayenneLpp {
         for (k, v) in &self.power {
             out.extend([*k, LPP_POWER]);
             out.extend(v.to_be_bytes());
-        }
-
-        // distance
-        for (k, v) in &self.distance {
-            out.extend([*k, LPP_DISTANCE]);
-
-            let val = (*v * 1000.0) as u32;
-            out.extend(val.to_be_bytes());
         }
 
         // energy
@@ -873,24 +861,6 @@ impl CayenneLpp {
             }
             out.fields.insert(
                 "power".to_string(),
-                pbjson_types::Value {
-                    kind: Some(pbjson_types::value::Kind::StructValue(val)),
-                },
-            );
-        }
-
-        if !self.distance.is_empty() {
-            let mut val: pbjson_types::Struct = Default::default();
-            for (k, v) in &self.distance {
-                val.fields.insert(
-                    format!("{}", k),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::NumberValue(*v)),
-                    },
-                );
-            }
-            out.fields.insert(
-                "distance".to_string(),
                 pbjson_types::Value {
                     kind: Some(pbjson_types::value::Kind::StructValue(val)),
                 },
@@ -1565,27 +1535,6 @@ impl CayenneLpp {
                 let c: u8 = k.parse()?;
                 if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
                     self.power.insert(c, *v as u16);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn set_distance(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
-        let mut buf: [u8; 4] = [0; 4];
-        cur.read_exact(&mut buf)?;
-        let val = u32::from_be_bytes(buf);
-        self.distance.insert(channel, (val as f64) / 1000.0);
-        Ok(())
-    }
-
-    fn set_distance_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
-        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
-            for (k, v) in &s.fields {
-                let c: u8 = k.parse()?;
-                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
-                    self.distance.insert(c, *v);
                 }
             }
         }
@@ -2356,24 +2305,6 @@ pub mod test {
                                     "2".to_string(),
                                     prost_types::Value {
                                         kind: Some(prost_types::value::Kind::NumberValue(1000.0)),
-                                    },
-                                ),
-                            ]
-                            .iter()
-                            .cloned()
-                            .collect(),
-                        })),
-                    },
-                ),
-                (
-                    "distance".to_string(),
-                    prost_types::Value {
-                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
-                            fields: [
-                                (
-                                    "2".to_string(),
-                                    prost_types::Value {
-                                        kind: Some(prost_types::value::Kind::NumberValue(42300.0)),
                                     },
                                 ),
                             ]
