@@ -18,17 +18,17 @@ dist:
 	# Keep these in this order, as aarch64 is based on Debian Buster (older),
 	# the others on Bullseye. For some build scripts we want to build against
 	# least recent LIBC.
-	cross build --target aarch64-unknown-linux-musl --release --no-default-features --features="$(DATABASE)"
-	cross build --target x86_64-unknown-linux-musl --release --no-default-features --features="$(DATABASE)"
-	cross build --target armv7-unknown-linux-musleabihf --release --no-default-features --features="$(DATABASE)"
+	CROSS_BUILD_OPTS="--load" cross build --target aarch64-unknown-linux-musl --release --no-default-features --features="$(DATABASE)"
+	CROSS_BUILD_OPTS="--load" cross build --target x86_64-unknown-linux-musl --release --no-default-features --features="$(DATABASE)"
+	CROSS_BUILD_OPTS="--load" cross build --target armv7-unknown-linux-musleabihf --release --no-default-features --features="$(DATABASE)"
 
 	cargo deb --target x86_64-unknown-linux-musl --no-build --no-strip $(VARIANT_FLAGS)
 	cargo deb --target armv7-unknown-linux-musleabihf --no-build --no-strip $(VARIANT_FLAGS)
 	cargo deb --target aarch64-unknown-linux-musl --no-build --no-strip $(VARIANT_FLAGS)
 
-	cargo generate-rpm --target x86_64-unknown-linux-musl --target-dir ../target $(VARIANT_FLAGS)
-	cargo generate-rpm --target armv7-unknown-linux-musleabihf --target-dir ../target $(VARIANT_FLAGS)
-	cargo generate-rpm --target aarch64-unknown-linux-musl --target-dir ../target $(VARIANT_FLAGS)
+	#cargo generate-rpm --target x86_64-unknown-linux-musl --target-dir ../target $(VARIANT_FLAGS)
+	#cargo generate-rpm --target armv7-unknown-linux-musleabihf --target-dir ../target $(VARIANT_FLAGS)
+	#cargo generate-rpm --target aarch64-unknown-linux-musl --target-dir ../target $(VARIANT_FLAGS)
 
 	mkdir -p ../dist
 
@@ -36,9 +36,9 @@ dist:
 	cp ../target/armv7-unknown-linux-musleabihf/debian/*.deb ../dist
 	cp ../target/aarch64-unknown-linux-musl/debian/*.deb ../dist
 
-	cp ../target/x86_64-unknown-linux-musl/generate-rpm/*.rpm ../dist
-	cp ../target/armv7-unknown-linux-musleabihf/generate-rpm/*.rpm ../dist
-	cp ../target/aarch64-unknown-linux-musl/generate-rpm/*.rpm ../dist
+	#cp ../target/x86_64-unknown-linux-musl/generate-rpm/*.rpm ../dist
+	#cp ../target/armv7-unknown-linux-musleabihf/generate-rpm/*.rpm ../dist
+	#cp ../target/aarch64-unknown-linux-musl/generate-rpm/*.rpm ../dist
 
 	tar -czvf ../dist/chirpstack_$(PKG_VERSION)_$(DATABASE)_amd64.tar.gz -C ../target/x86_64-unknown-linux-musl/release chirpstack
 	tar -czvf ../dist/chirpstack_$(PKG_VERSION)_$(DATABASE)_armv7hf.tar.gz -C ../target/armv7-unknown-linux-musleabihf/release chirpstack
