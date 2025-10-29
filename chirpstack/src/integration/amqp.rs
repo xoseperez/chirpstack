@@ -5,7 +5,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use handlebars::Handlebars;
 use lapin::{
-    options::BasicPublishOptions, BasicProperties, Channel, Connection, ConnectionProperties,
+    BasicProperties, Channel, Connection, ConnectionProperties, options::BasicPublishOptions,
 };
 use prost::Message;
 use serde::Serialize;
@@ -221,20 +221,6 @@ impl IntegrationTrait for Integration<'_> {
     ) -> Result<()> {
         let di = pl.device_info.as_ref().unwrap();
         let key = self.get_routing_key(&di.application_id, &di.dev_eui, "location")?;
-        let b = match self.json {
-            true => serde_json::to_vec(&pl)?,
-            false => pl.encode_to_vec(),
-        };
-        self.publish_event(key, &b).await
-    }
-
-    async fn integration_event(
-        &self,
-        _vars: &HashMap<String, String>,
-        pl: &integration::IntegrationEvent,
-    ) -> Result<()> {
-        let di = pl.device_info.as_ref().unwrap();
-        let key = self.get_routing_key(&di.application_id, &di.dev_eui, "integration")?;
         let b = match self.json {
             true => serde_json::to_vec(&pl)?,
             false => pl.encode_to_vec(),

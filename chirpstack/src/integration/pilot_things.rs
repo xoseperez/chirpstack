@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use reqwest::header::{HeaderMap, CONTENT_TYPE};
 use reqwest::Client;
+use reqwest::header::{CONTENT_TYPE, HeaderMap};
 use serde::Serialize;
 use tracing::{info, trace};
 
@@ -116,14 +116,6 @@ impl IntegrationTrait for Integration {
         &self,
         _vars: &HashMap<String, String>,
         _pl: &integration::LocationEvent,
-    ) -> Result<()> {
-        Ok(())
-    }
-
-    async fn integration_event(
-        &self,
-        _vars: &HashMap<String, String>,
-        _pl: &integration::IntegrationEvent,
     ) -> Result<()> {
         Ok(())
     }

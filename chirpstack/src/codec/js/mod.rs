@@ -189,7 +189,7 @@ pub async fn encode(
         let b: Vec<u8> = b.iter().map(|v| *v as u8).collect();
 
         // Get fPort, or else fallback on provided fPort.
-        let f_port: f64 = res.get("fPort").unwrap_or_else(|_| f_port as f64);
+        let f_port: f64 = res.get("fPort").unwrap_or(f_port as f64);
         let f_port = f_port as u8;
 
         Ok((f_port, b))
@@ -371,7 +371,10 @@ pub mod test {
         };
 
         let out = encode(10, &vars, &encoder, &input).await;
-        assert_eq!("JS error: Error: foo is not defined\n    at encodeDownlink (eval_script:3:1)\n    at <eval> (eval_script:8:24)\n", out.err().unwrap().to_string());
+        assert_eq!(
+            "JS error: Error: foo is not defined\n    at encodeDownlink (eval_script:3:1)\n    at <eval> (eval_script:8:24)\n",
+            out.err().unwrap().to_string()
+        );
     }
 
     #[tokio::test]

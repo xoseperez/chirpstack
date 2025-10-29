@@ -6,10 +6,11 @@ use tracing::info;
 
 use crate::{config, stream};
 use backend::{Client, ClientConfig};
-use lrwn::{EUI64Prefix, EUI64};
+use lrwn::{EUI64, EUI64Prefix};
 
-static CLIENTS: LazyLock<RwLock<Vec<(EUI64Prefix, Arc<Client>)>>> =
-    LazyLock::new(|| RwLock::new(vec![]));
+type EuiClientList = Vec<(EUI64Prefix, Arc<Client>)>;
+
+static CLIENTS: LazyLock<RwLock<EuiClientList>> = LazyLock::new(|| RwLock::new(vec![]));
 
 pub async fn setup() -> Result<()> {
     info!("Setting up Join Server clients");

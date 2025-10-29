@@ -4,11 +4,11 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use gcp_auth::{CustomServiceAccount, TokenProvider};
 use prost::Message;
-use reqwest::header::{HeaderMap, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::Client;
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap};
 use serde::Serialize;
 use tracing::{info, trace};
 
@@ -231,21 +231,6 @@ impl IntegrationTrait for Integration {
         };
 
         self.publish("location", &di.application_id, &di.dev_eui, &pl)
-            .await
-    }
-
-    async fn integration_event(
-        &self,
-        _vars: &HashMap<String, String>,
-        pl: &integration::IntegrationEvent,
-    ) -> Result<()> {
-        let di = pl.device_info.as_ref().unwrap();
-        let pl = match self.json {
-            true => serde_json::to_vec(&pl)?,
-            false => pl.encode_to_vec(),
-        };
-
-        self.publish("integration", &di.application_id, &di.dev_eui, &pl)
             .await
     }
 }

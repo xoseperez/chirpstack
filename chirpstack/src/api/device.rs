@@ -532,7 +532,6 @@ impl DeviceService for Device {
                 kek_label: "".into(),
                 aes_key: app_s_key.to_vec(),
             }),
-            f_cnt_up: req_da.f_cnt_up,
             n_f_cnt_down: req_da.n_f_cnt_down,
             a_f_cnt_down: req_da.a_f_cnt_down,
             skip_f_cnt_check: d.skip_fcnt_check,
@@ -544,6 +543,7 @@ impl DeviceService for Device {
             device_session: Some(Some(ds.into())),
             dev_addr: Some(Some(dev_addr)),
             secondary_dev_addr: Some(None),
+            f_cnt_up: Some(req_da.f_cnt_up as i64),
             ..Default::default()
         };
 
@@ -648,7 +648,7 @@ impl DeviceService for Device {
                 nwk_s_enc_key: hex::encode(&ds.nwk_s_enc_key),
                 s_nwk_s_int_key: hex::encode(&ds.s_nwk_s_int_key),
                 f_nwk_s_int_key: hex::encode(&ds.f_nwk_s_int_key),
-                f_cnt_up: ds.f_cnt_up,
+                f_cnt_up: d.f_cnt_up as u32,
                 n_f_cnt_down: ds.n_f_cnt_down,
                 a_f_cnt_down: ds.a_f_cnt_down,
             }),
@@ -1255,8 +1255,8 @@ impl DeviceService for Device {
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::api::auth::validator::RequestValidator;
     use crate::api::auth::AuthID;
+    use crate::api::auth::validator::RequestValidator;
     use crate::storage::{application, device, tenant, user};
     use crate::test;
     use lrwn::NetID;

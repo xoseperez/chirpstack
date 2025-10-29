@@ -9,9 +9,9 @@ use diesel_async::async_connection_wrapper::AsyncConnectionWrapper;
 use diesel_async::pooled_connection::deadpool::{Object as DeadpoolObject, Pool as DeadpoolPool};
 use diesel_async::pooled_connection::{AsyncDieselConnectionManager, ManagerConfig};
 use diesel_async::{AsyncPgConnection, RunQueryDsl};
-use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
-use futures_util::future::BoxFuture;
+use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 use futures_util::FutureExt;
+use futures_util::future::BoxFuture;
 use tracing::{error, info};
 use uuid::Uuid;
 
@@ -229,7 +229,7 @@ impl Integration {
 
 // Source:
 // https://github.com/weiznich/diesel_async/blob/main/examples/postgres/pooled-with-rustls/src/main.rs
-fn pg_establish_connection(config: &str) -> BoxFuture<ConnectionResult<AsyncPgConnection>> {
+fn pg_establish_connection(config: &str) -> BoxFuture<'_, ConnectionResult<AsyncPgConnection>> {
     let fut = async {
         let conf = config::get();
 
@@ -507,41 +507,6 @@ impl IntegrationTrait for Integration {
         let mut c = self.pg_pool.get().await?;
 
         diesel::insert_into(event_location::table)
-            .values(&e)
-            .execute(&mut c)
-            .await?;
-        Ok(())
-    }
-
-    async fn integration_event(
-        &self,
-        _vars: &HashMap<String, String>,
-        pl: &integration::IntegrationEvent,
-    ) -> Result<()> {
-        let di = pl.device_info.as_ref().unwrap();
-        info!(dev_eui = %di.dev_eui, event = "integration", "Inserting event");
-
-        let e = EventIntegration {
-            deduplication_id: Uuid::from_str(&pl.deduplication_id)?,
-            time: (*pl.time.as_ref().unwrap())
-                .try_into()
-                .map_err(anyhow::Error::msg)?,
-            tenant_id: Uuid::from_str(&di.tenant_id)?,
-            tenant_name: di.tenant_name.clone(),
-            application_id: Uuid::from_str(&di.application_id)?,
-            application_name: di.application_name.clone(),
-            device_profile_id: Uuid::from_str(&di.device_profile_id)?,
-            device_profile_name: di.device_profile_name.clone(),
-            device_name: di.device_name.clone(),
-            dev_eui: di.dev_eui.clone(),
-            tags: serde_json::to_value(&di.tags)?,
-            integration_name: pl.integration_name.clone(),
-            event_type: pl.event_type.clone(),
-            object: serde_json::to_value(&pl.object)?,
-        };
-        let mut c = self.pg_pool.get().await?;
-
-        diesel::insert_into(event_integration::table)
             .values(&e)
             .execute(&mut c)
             .await?;

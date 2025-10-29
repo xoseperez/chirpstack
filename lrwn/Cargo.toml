@@ -1,26 +1,32 @@
 [package]
   name = "lrwn"
   description = "Library for encoding / decoding LoRaWAN frames."
-  homepage = "https://www.chirpstack.io"
-  license = "MIT"
-  version = "4.14.1"
-  authors = ["Orne Brocaar <info@brocaar.com>"]
-  edition = "2018"
-  repository = "https://github.com/chirpstack/chirpstack"
+  homepage.workspace = true
+  license.workspace = true
+  version.workspace = true
+  authors.workspace = true
+  edition.workspace = true
+  repository.workspace = true
 
   [package.metadata.docs.rs]
     all-features = true
 
 [dependencies]
-  hex = "0.4"
-  cmac = { version = "0.7", optional = true }
-  aes = { version = "0.8", optional = true }
-  serde = { version = "1.0", features = ["derive"], optional = true }
-  diesel = { version = "2.2", optional = true }
-
   # Error handling
-  thiserror = "2.0"
-  anyhow = "1.0"
+  thiserror.workspace = true
+  anyhow.workspace = true
+
+  # Encoding
+  hex.workspace = true
+  serde = { workspace = true, optional = true }
+
+  # Crypto
+  cmac = { workspace = true, optional = true }
+  aes = { workspace = true, optional = true }
+
+  # Database
+  diesel = { workspace = true, optional = true }
+
 
 [features]
   default = []

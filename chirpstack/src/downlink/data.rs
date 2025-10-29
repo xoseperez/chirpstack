@@ -6,7 +6,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use rand::Rng;
-use tracing::{debug, span, trace, warn, Instrument, Level};
+use tracing::{Instrument, Level, debug, span, trace, warn};
 
 use crate::api::backend::get_async_receiver;
 use crate::api::helpers::{FromProto, ToProto};
@@ -24,7 +24,7 @@ use crate::storage::{
 use crate::uplink::{RelayContext, UplinkFrameSet};
 use crate::{adr, config, gateway, integration, maccommand, region, sensitivity};
 use chirpstack_api::{gw, integration as integration_pb, internal};
-use lrwn::{keys, AES128Key, NetID};
+use lrwn::{AES128Key, NetID, keys};
 
 struct DownlinkFrameItem {
     downlink_frame_item: gw::DownlinkFrameItem,
@@ -708,6 +708,7 @@ impl Data {
         trace!("Setting downlink PHYPayloads");
         let mut f_pending = self.more_device_queue_items;
         let dev_addr = self.device.get_dev_addr()?;
+        let device_f_cnt_up = self.device.f_cnt_up as u32;
         let ds = self.device.get_device_session_mut()?;
 
         for item in self.downlink_frame_items.iter_mut() {
@@ -842,7 +843,7 @@ impl Data {
             // this is not an ACK, then DownlinkDataMIC will zero out ConfFCnt.
             phy.set_downlink_data_mic(
                 ds.mac_version().from_proto(),
-                ds.f_cnt_up.overflowing_sub(1).0,
+                device_f_cnt_up.overflowing_sub(1).0,
                 &lrwn::AES128Key::from_slice(&ds.s_nwk_s_int_key)?,
             )
             .context("Set downlink data MIC")?;
@@ -895,7 +896,7 @@ impl Data {
             // this is not an ACK, then DownlinkDataMIC will zero out ConfFCnt.
             relay_phy.set_downlink_data_mic(
                 relay_ds.mac_version().from_proto(),
-                relay_ds.f_cnt_up - 1,
+                (relay_ctx.device.f_cnt_up as u32) - 1,
                 &lrwn::AES128Key::from_slice(&relay_ds.s_nwk_s_int_key)?,
             )?;
 
@@ -940,7 +941,7 @@ impl Data {
             // this is not an ACK, then DownlinkDataMIC will zero out ConfFCnt.
             relay_phy.set_downlink_data_mic(
                 relay_ds.mac_version().from_proto(),
-                relay_ds.f_cnt_up - 1,
+                (relay_ctx.device.f_cnt_up as u32) - 1,
                 &lrwn::AES128Key::from_slice(&relay_ds.s_nwk_s_int_key)?,
             )?;
 
@@ -1046,9 +1047,9 @@ impl Data {
 
     fn check_for_first_uplink(&self) -> Result<(), Error> {
         trace!("Checking if device has sent its first uplink already");
-        let ds = self.device.get_device_session().map_err(|_| Error::Abort)?;
+        self.device.get_device_session().map_err(|_| Error::Abort)?;
 
-        if ds.f_cnt_up == 0 {
+        if self.device.f_cnt_up == 0 {
             debug!("Device must send its first uplink first");
             return Err(Error::Abort);
         }

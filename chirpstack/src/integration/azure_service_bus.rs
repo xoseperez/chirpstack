@@ -4,11 +4,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 use async_trait::async_trait;
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use hmac::{Hmac, Mac};
 use prost::Message;
-use reqwest::header::{HeaderMap, HeaderName, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::Client;
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderName};
 use sha2::Sha256;
 use tracing::{info, trace};
 
@@ -218,21 +218,6 @@ impl IntegrationTrait for Integration {
         self.publish("location", &di.application_id, &di.dev_eui, &pl)
             .await
     }
-
-    async fn integration_event(
-        &self,
-        _vars: &HashMap<String, String>,
-        pl: &integration::IntegrationEvent,
-    ) -> Result<()> {
-        let di = pl.device_info.as_ref().unwrap();
-        let pl = match self.json {
-            true => serde_json::to_string(&pl)?,
-            false => general_purpose::STANDARD.encode(pl.encode_to_vec()),
-        };
-
-        self.publish("integration", &di.application_id, &di.dev_eui, &pl)
-            .await
-    }
 }
 
 type HmacSha256 = Hmac<Sha256>;
@@ -292,12 +277,17 @@ pub mod test {
         )
         .unwrap();
 
-        assert_eq!("SharedAccessSignature sig=VPMESaZwz0wSdvzJXET0DgZMBpKh95yjP988pUt6Qo4%3D&se=10&skn=MyKey&sr=https%3A%2F%2Fchirpstack-tst.servicebus.windows.net%2F", token);
+        assert_eq!(
+            "SharedAccessSignature sig=VPMESaZwz0wSdvzJXET0DgZMBpKh95yjP988pUt6Qo4%3D&se=10&skn=MyKey&sr=https%3A%2F%2Fchirpstack-tst.servicebus.windows.net%2F",
+            token
+        );
     }
 
     #[test]
     fn test_parse_connection_string() {
-        let kv = parse_connection_string("Endpoint=sb://chirpstack-tst.servicebus.windows.net/;SharedAccessKeyName=TestKeyName;SharedAccessKey=TestKey");
+        let kv = parse_connection_string(
+            "Endpoint=sb://chirpstack-tst.servicebus.windows.net/;SharedAccessKeyName=TestKeyName;SharedAccessKey=TestKey",
+        );
         let expected: HashMap<String, String> = [
             (
                 "Endpoint".to_string(),
@@ -489,30 +479,6 @@ pub mod test {
         });
 
         i.location_event(&HashMap::new(), &pl).await.unwrap();
-        mock.assert();
-        mock.delete();
-
-        // integration
-        let pl = integration::IntegrationEvent {
-            device_info: Some(integration::DeviceInfo {
-                application_id: Uuid::nil().to_string(),
-                dev_eui: "0102030405060708".to_string(),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let mut mock = server.mock(|when, then| {
-            when.method(POST)
-                .path("/messages")
-                .header_exists("Authorization")
-                .header("Content-Type", "application/json")
-                .header("event", "\"integration\"")
-                .body(serde_json::to_string(&pl).unwrap());
-
-            then.status(200);
-        });
-
-        i.integration_event(&HashMap::new(), &pl).await.unwrap();
         mock.assert();
         mock.delete();
     }

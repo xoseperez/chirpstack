@@ -39,6 +39,7 @@ pub struct Configuration {
 pub struct Logging {
     pub level: String,
     pub json: bool,
+    pub flatten_json: bool,
 }
 
 impl Default for Logging {
@@ -46,6 +47,7 @@ impl Default for Logging {
         Logging {
             level: "info".into(),
             json: false,
+            flatten_json: false,
         }
     }
 }
@@ -75,7 +77,6 @@ pub struct Redis {
     pub cluster: bool,
     pub key_prefix: String,
     pub max_open_connections: u32,
-    pub min_idle_connections: u32,
 }
 
 impl Default for Redis {
@@ -85,7 +86,6 @@ impl Default for Redis {
             cluster: false,
             key_prefix: "".into(),
             max_open_connections: 100,
-            min_idle_connections: 0,
         }
     }
 }

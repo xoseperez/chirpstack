@@ -19,6 +19,9 @@ pub fn run() {
 
   # Log as JSON.
   json={{ logging.json }}
+  
+  # Flatten JSON logs
+  json={{ logging.flatten_json }}
 
 
 # PostgreSQL configuration.
@@ -121,12 +124,6 @@ pub fn run() {
   # This sets the max. number of open connections that are allowed in the
   # Redis connection pool.
   max_open_connections={{ redis.max_open_connections }}
-
-  # Min idle connections.
-  #
-  # This sets the min. number of idle connections in the Redis connection
-  # pool (0 = equal to max_open_connections).
-  min_idle_connections={{ redis.min_idle_connections }}
 
 
 # API interface configuration.

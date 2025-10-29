@@ -3,11 +3,11 @@ use std::ops::Add;
 
 use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
-use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
 pub struct AuthClaim {
     pub aud: String,
     #[serde(default, skip_serializing_if = "is_default")]

@@ -8,10 +8,10 @@ use handlebars::Handlebars;
 use prost::Message;
 use rand::Rng;
 use regex::Regex;
+use rumqttc::Transport;
 use rumqttc::tokio_rustls::rustls;
 use rumqttc::v5::mqttbytes::v5::{ConnectReturnCode, Publish};
-use rumqttc::v5::{mqttbytes::QoS, AsyncClient, Event, Incoming, MqttOptions};
-use rumqttc::Transport;
+use rumqttc::v5::{AsyncClient, Event, Incoming, MqttOptions, mqttbytes::QoS};
 use serde::Serialize;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
@@ -376,26 +376,6 @@ impl IntegrationTrait for Integration<'_> {
 
         self.publish_event(&topic, b).await
     }
-
-    async fn integration_event(
-        &self,
-        _vars: &HashMap<String, String>,
-        pl: &integration::IntegrationEvent,
-    ) -> Result<()> {
-        let dev_info = pl
-            .device_info
-            .as_ref()
-            .ok_or_else(|| anyhow!("device_info is None"))?;
-
-        let topic =
-            self.get_event_topic(&dev_info.application_id, &dev_info.dev_eui, "integration")?;
-        let b = match self.json {
-            true => serde_json::to_vec(&pl)?,
-            false => pl.encode_to_vec(),
-        };
-
-        self.publish_event(&topic, b).await
-    }
 }
 
 async fn message_callback(
@@ -454,7 +434,7 @@ pub mod test {
     use crate::test;
     use lrwn::EUI64;
     use tokio::sync::mpsc;
-    use tokio::time::{sleep, Duration};
+    use tokio::time::{Duration, sleep};
     use uuid::Uuid;
 
     #[tokio::test]
@@ -667,26 +647,6 @@ pub mod test {
         let msg = mqtt_rx.recv().await.unwrap();
         assert_eq!(
             "application/00000000-0000-0000-0000-000000000000/device/0102030405060708/event/location",
-            String::from_utf8(msg.topic.to_vec()).unwrap()
-        );
-        assert_eq!(
-            serde_json::to_string(&pl).unwrap(),
-            String::from_utf8(msg.payload.to_vec()).unwrap()
-        );
-
-        // integration event
-        let pl = integration::IntegrationEvent {
-            device_info: Some(integration::DeviceInfo {
-                application_id: Uuid::nil().to_string(),
-                dev_eui: "0102030405060708".to_string(),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        i.integration_event(&HashMap::new(), &pl).await.unwrap();
-        let msg = mqtt_rx.recv().await.unwrap();
-        assert_eq!(
-            "application/00000000-0000-0000-0000-000000000000/device/0102030405060708/event/integration",
             String::from_utf8(msg.topic.to_vec()).unwrap()
         );
         assert_eq!(

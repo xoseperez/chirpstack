@@ -9,8 +9,8 @@ use diesel::{ConnectionError, ConnectionResult};
 use diesel_async::pooled_connection::deadpool::{Object as DeadpoolObject, Pool as DeadpoolPool};
 use diesel_async::pooled_connection::{AsyncDieselConnectionManager, ManagerConfig};
 use diesel_async::{AsyncConnection, AsyncPgConnection};
-use futures::{future::BoxFuture, FutureExt};
-use prometheus_client::metrics::histogram::{exponential_buckets, Histogram};
+use futures::{FutureExt, future::BoxFuture};
+use prometheus_client::metrics::histogram::{Histogram, exponential_buckets};
 use scoped_futures::ScopedBoxFuture;
 
 use crate::config;
@@ -46,7 +46,7 @@ pub fn setup(conf: &config::Postgresql) -> Result<()> {
 
 // Source:
 // https://github.com/weiznich/diesel_async/blob/main/examples/postgres/pooled-with-rustls/src/main.rs
-fn pg_establish_connection(config: &str) -> BoxFuture<ConnectionResult<AsyncPgConnection>> {
+fn pg_establish_connection(config: &str) -> BoxFuture<'_, ConnectionResult<AsyncPgConnection>> {
     let fut = async {
         let conf = config::get();
 
