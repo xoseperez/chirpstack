@@ -338,11 +338,11 @@ impl JoinRequest {
         trace!("Validating region_config_id against device-profile");
 
         let dp = self.device_profile.as_ref().unwrap();
-        if let Some(v) = &dp.region_config_id {
-            if !self.uplink_frame_set.region_config_id.eq(v) {
-                warn!("Aborting as region config ID does not match with device-profile");
-                return Err(Error::Abort);
-            }
+        if let Some(v) = &dp.region_config_id
+            && !self.uplink_frame_set.region_config_id.eq(v)
+        {
+            warn!("Aborting as region config ID does not match with device-profile");
+            return Err(Error::Abort);
         }
 
         Ok(())
@@ -381,11 +381,12 @@ impl JoinRequest {
 
     fn abort_on_relay_only_comm(&self) -> Result<(), Error> {
         // In case the relay context is not set and relay_ed_relay_only is set, abort.
-        if let Some(relay_params) = &self.device_profile.as_ref().unwrap().relay_params {
-            if self.relay_context.is_none() && relay_params.ed_relay_only {
-                info!(dev_eui = %self.device.as_ref().unwrap().dev_eui, "Only communication through relay is allowed");
-                return Err(Error::Abort);
-            }
+        if let Some(relay_params) = &self.device_profile.as_ref().unwrap().relay_params
+            && self.relay_context.is_none()
+            && relay_params.ed_relay_only
+        {
+            info!(dev_eui = %self.device.as_ref().unwrap().dev_eui, "Only communication through relay is allowed");
+            return Err(Error::Abort);
         }
         Ok(())
     }
@@ -515,8 +516,10 @@ impl JoinRequest {
 
     fn set_random_dev_addr(&mut self) -> Result<()> {
         trace!("Setting random DevAddr");
+        let tenant = self.tenant.as_ref().unwrap();
         let d = self.device.as_mut().unwrap();
-        d.dev_addr = Some(get_random_dev_addr());
+        d.dev_addr = Some(get_random_dev_addr(&tenant.get_dev_addr_prefixes()));
+
         Ok(())
     }
 
@@ -826,8 +829,8 @@ impl JoinRequest {
                         i as u32,
                         internal::DeviceSessionChannel {
                             frequency: c.frequency,
-                            min_dr: c.min_dr as u32,
-                            max_dr: c.max_dr as u32,
+                            data_rates: c.data_rates.into_iter().map(|v| v as u32).collect(),
+                            ..Default::default()
                         },
                     );
                 }
@@ -901,25 +904,25 @@ impl JoinRequest {
         Ok(())
     }
 
-    async fn start_downlink_join_accept_flow(&self) -> Result<()> {
+    async fn start_downlink_join_accept_flow(&mut self) -> Result<()> {
         trace!("Starting downlink join-accept flow");
         downlink::join::JoinAccept::handle(
             &self.uplink_frame_set,
             self.tenant.as_ref().unwrap(),
-            self.device.as_ref().unwrap(),
+            self.device.as_mut().unwrap(),
             self.join_accept.as_ref().unwrap(),
         )
         .await?;
         Ok(())
     }
 
-    async fn start_downlink_join_accept_flow_relayed(&self) -> Result<()> {
+    async fn start_downlink_join_accept_flow_relayed(&mut self) -> Result<()> {
         trace!("Starting relayed downlink join-accept flow");
         downlink::join::JoinAccept::handle_relayed(
             self.relay_context.as_ref().unwrap(),
             &self.uplink_frame_set,
             self.tenant.as_ref().unwrap(),
-            self.device.as_ref().unwrap(),
+            self.device.as_mut().unwrap(),
             self.join_accept.as_ref().unwrap(),
         )
         .await?;

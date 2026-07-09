@@ -6,11 +6,11 @@ use anyhow::Result;
 use async_trait::async_trait;
 use handlebars::Handlebars;
 use prost::Message;
-use rand::Rng;
+use rand::RngExt;
 use regex::Regex;
 use rumqttc::Transport;
 use rumqttc::tokio_rustls::rustls;
-use rumqttc::v5::mqttbytes::v5::{ConnectReturnCode, Publish};
+use rumqttc::v5::mqttbytes::v5::{ConnectReturnCode, Publish, SubscribeReasonCode};
 use rumqttc::v5::{AsyncClient, Event, Incoming, MqttOptions, mqttbytes::QoS};
 use serde::Serialize;
 use tokio::sync::mpsc;
@@ -19,7 +19,7 @@ use tracing::{error, info, trace, warn};
 
 use super::Integration as IntegrationTrait;
 use crate::config::MqttIntegration as Config;
-use crate::helpers::tls22::{get_root_certs, load_cert, load_key};
+use crate::helpers::tls::{get_root_certs, load_cert, load_key};
 use chirpstack_api::integration;
 
 pub struct Integration<'a> {
@@ -81,11 +81,11 @@ impl<'a> Integration<'a> {
             _ => return Err(anyhow!("Invalid QoS: {}", conf.qos)),
         };
 
-        // Create connect channel
+        // Create subscribe channel.
         // We need to re-subscribe on (re)connect to be sure we have a subscription. Even
         // in case of a persistent MQTT session, there is no guarantee that the MQTT persisted the
         // session and that a re-connect would recover the subscription.
-        let (connect_tx, mut connect_rx) = mpsc::channel(10);
+        let (subscribe_tx, mut subscribe_rx) = mpsc::channel(10);
 
         // Create client
         let mut mqtt_opts =
@@ -124,7 +124,7 @@ impl<'a> Integration<'a> {
             mqtt_opts.set_transport(Transport::tls_with_config(client_conf.into()));
         }
 
-        let (client, mut eventloop) = AsyncClient::new(mqtt_opts, 100);
+        let (client, mut eventloop) = AsyncClient::new(mqtt_opts, conf.channel_capacity);
 
         let i = Integration {
             command_regex: Regex::new(&templates.render(
@@ -148,12 +148,25 @@ impl<'a> Integration<'a> {
         tokio::spawn({
             let client = i.client.clone();
             let qos = i.qos;
+            let share_name = conf.share_name.clone();
 
             async move {
-                while connect_rx.recv().await.is_some() {
-                    info!(command_topic = %command_topic, "Subscribing to command topic");
-                    if let Err(e) = client.subscribe(&command_topic, qos).await {
-                        error!(error = %e, "Subscribe to command topic error");
+                while let Some(shared_sub_support) = subscribe_rx.recv().await {
+                    let command_topic = if shared_sub_support {
+                        format!("$share/{}/{}", share_name, command_topic)
+                    } else {
+                        command_topic.clone()
+                    };
+
+                    loop {
+                        info!(command_topic = %command_topic, "Subscribing to command topic");
+                        if let Err(e) = client.subscribe(&command_topic, qos).await {
+                            error!(error = %e, "Subscribe to command topic error");
+                        } else {
+                            break;
+                        }
+
+                        sleep(Duration::from_secs(1)).await;
                     }
                 }
             }
@@ -166,6 +179,7 @@ impl<'a> Integration<'a> {
 
             async move {
                 info!("Starting MQTT event loop");
+                let mut shared_sub_support = false;
 
                 loop {
                     match eventloop.poll().await {
@@ -199,12 +213,39 @@ impl<'a> Integration<'a> {
                                 }
                                 Event::Incoming(Incoming::ConnAck(v)) => {
                                     if v.code == ConnectReturnCode::Success {
-                                        if let Err(e) = connect_tx.try_send(()) {
+                                        // Per specification:
+                                        // A value of 1 means Shared Subscriptions are supported. If not present, then Shared Subscriptions are supported.
+                                        shared_sub_support = v
+                                            .properties
+                                            .map(|v| {
+                                                v.shared_subscription_available
+                                                    .map(|v| v == 1)
+                                                    .unwrap_or(true)
+                                            })
+                                            .unwrap_or(true);
+
+                                        if let Err(e) = subscribe_tx.try_send(shared_sub_support) {
                                             error!(error = %e, "Send to subscribe channel error");
                                         }
                                     } else {
                                         error!(code = ?v.code, "Connection error");
                                         sleep(Duration::from_secs(1)).await
+                                    }
+                                }
+                                Event::Incoming(Incoming::SubAck(v)) => {
+                                    let errors: Vec<SubscribeReasonCode> = v
+                                        .return_codes
+                                        .iter()
+                                        .filter(|v| !matches!(v, SubscribeReasonCode::Success(_)))
+                                        .cloned()
+                                        .collect();
+
+                                    if !errors.is_empty() {
+                                        error!(errors = ?errors, "Subscribe ack returned errors");
+
+                                        if let Err(e) = subscribe_tx.try_send(shared_sub_support) {
+                                            error!(error = %e, "Send to subscribe channel error");
+                                        }
                                     }
                                 }
                                 _ => {}
@@ -457,7 +498,7 @@ pub mod test {
         .unwrap();
         let dp = device_profile::create(device_profile::DeviceProfile {
             name: "test-dp".into(),
-            tenant_id: t.id,
+            tenant_id: Some(t.id),
             ..Default::default()
         })
         .await

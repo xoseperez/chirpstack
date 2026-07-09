@@ -1,5 +1,6 @@
 use std::env;
 use std::sync::{LazyLock, Mutex, Once};
+use std::time::Duration;
 
 use crate::{adr, config, region, storage};
 
@@ -14,6 +15,7 @@ mod otaa_pr_test;
 mod otaa_test;
 mod relay_class_a_test;
 mod relay_otaa_test;
+mod tx_ack_test;
 
 static TRACING_INIT: Once = Once::new();
 
@@ -39,6 +41,7 @@ pub async fn prepare<'a>() -> std::sync::MutexGuard<'a, ()> {
     conf.redis.servers = vec![env::var("TEST_REDIS_URL").unwrap()];
     conf.sqlite.path = ":memory:".to_string();
     conf.network.enabled_regions = vec!["eu868".to_string()];
+    conf.network.scheduler.class_b_schedule_advance = Duration::from_secs(128 * 2);
     conf.regions = vec![config::Region {
         id: "eu868".to_string(),
         description: "EU868".to_string(),

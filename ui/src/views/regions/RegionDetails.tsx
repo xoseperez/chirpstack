@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { useParams } from "react-router-dom";
 
 import { Space, Breadcrumb, Card, Row, Col, List, Typography } from "antd";
-import { PageHeader } from "@ant-design/pro-layout";
 import ReactMarkdown from "react-markdown";
 
 import { Region } from "@chirpstack/chirpstack-api-grpc-web/common/common_pb";
@@ -13,6 +12,7 @@ import { GetRegionRequest } from "@chirpstack/chirpstack-api-grpc-web/api/intern
 import { getEnumName } from "../helpers";
 import InternalStore from "../../stores/InternalStore";
 import { useTitle } from "../helpers";
+import PageHeader from "../../components/PageHeader";
 
 function RegionDetails() {
   const [region, setRegion] = useState<GetRegionResponse | undefined>(undefined);
@@ -33,22 +33,16 @@ function RegionDetails() {
   }
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size="large">
+    <Space orientation="vertical" style={{ width: "100%" }} size="large">
       <PageHeader
         breadcrumbRender={() => (
-          <Breadcrumb>
-            <Breadcrumb.Item>
-              <span>Network Server</span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to="/regions">Regions</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>{region.getDescription()}</span>
-            </Breadcrumb.Item>
-          </Breadcrumb>
+          <Breadcrumb
+            items={[
+              { title: "Network Server" },
+              { title: <Link to="/regions">Regions</Link> },
+              { title: region.getDescription() },
+            ]}
+          />
         )}
         title={region.getDescription()}
         subTitle={`id: ${id}, common-name: ${getEnumName(Region, region.getRegion())}`}
@@ -60,7 +54,7 @@ function RegionDetails() {
       )}
       <Row gutter={24}>
         <Col span={12}>
-          <Space direction="vertical" style={{ width: "100%" }} size="large">
+          <Space orientation="vertical" style={{ width: "100%" }} size="large">
             <Card title="Uplink channels">
               <List
                 itemLayout="horizontal"
@@ -69,7 +63,10 @@ function RegionDetails() {
                   <List.Item>
                     <List.Item.Meta
                       title={`${item.getFrequency()} Hz`}
-                      description={`Min DR: ${item.getDrMin()}, max DR: ${item.getDrMax()}`}
+                      description={item
+                        .getDataRatesList()
+                        .map(v => `DR${v}`)
+                        .join(", ")}
                     />
                   </List.Item>
                 )}
@@ -78,7 +75,7 @@ function RegionDetails() {
           </Space>
         </Col>
         <Col span={12}>
-          <Space direction="vertical" style={{ width: "100%" }} size="large">
+          <Space orientation="vertical" style={{ width: "100%" }} size="large">
             <Card title="Downlink">
               <List
                 dataSource={[

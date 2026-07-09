@@ -1,11 +1,11 @@
 use std::cmp;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
-use rand::Rng;
+use rand::RngExt;
 use tracing::{Instrument, Level, debug, span, trace, warn};
 
 use crate::api::backend::get_async_receiver;
@@ -13,11 +13,10 @@ use crate::api::helpers::{FromProto, ToProto};
 use crate::backend::roaming;
 use crate::downlink::{classb, error::Error, helpers, tx_ack};
 use crate::gpstime::{ToDateTime, ToGpsTime};
-use crate::storage;
 use crate::storage::{
-    application,
+    self, application,
     device::{self, DeviceClass},
-    device_gateway, device_profile, device_queue, downlink_frame,
+    device_profile, device_queue, downlink_frame,
     helpers::get_all_device_data,
     mac_command, relay, tenant,
 };
@@ -43,8 +42,7 @@ pub struct Data {
     must_send: bool,
     must_ack: bool,
     mac_commands: Vec<lrwn::MACCommandSet>,
-    device_gateway_rx_info: Option<internal::DeviceGatewayRxInfo>,
-    downlink_gateway: Option<internal::DeviceGatewayRxInfoItem>,
+    downlink_gateway: Option<internal::DownlinkGateway>,
     downlink_frame: gw::DownlinkFrame,
     downlink_frame_items: Vec<DownlinkFrameItem>,
     immediately: bool,
@@ -56,7 +54,6 @@ impl Data {
     #[allow(clippy::too_many_arguments)]
     pub async fn handle_response(
         ufs: UplinkFrameSet,
-        dev_gw_rx_info: internal::DeviceGatewayRxInfo,
         tenant: tenant::Tenant,
         application: application::Application,
         device_profile: device_profile::DeviceProfile,
@@ -71,7 +68,6 @@ impl Data {
         match Data::_handle_response(
             downlink_id,
             ufs,
-            dev_gw_rx_info,
             tenant,
             application,
             device_profile,
@@ -98,7 +94,6 @@ impl Data {
     pub async fn handle_response_relayed(
         relay_ctx: RelayContext,
         ufs: UplinkFrameSet,
-        dev_gw_rx_info: internal::DeviceGatewayRxInfo,
         tenant: tenant::Tenant,
         application: application::Application,
         device_profile: device_profile::DeviceProfile,
@@ -114,7 +109,6 @@ impl Data {
             downlink_id,
             relay_ctx,
             ufs,
-            dev_gw_rx_info,
             tenant,
             application,
             device_profile,
@@ -161,7 +155,6 @@ impl Data {
     async fn _handle_response(
         downlink_id: u32,
         ufs: UplinkFrameSet,
-        dev_gw_rx_info: internal::DeviceGatewayRxInfo,
         tenant: tenant::Tenant,
         application: application::Application,
         device_profile: device_profile::DeviceProfile,
@@ -194,7 +187,6 @@ impl Data {
             must_send,
             must_ack,
             mac_commands,
-            device_gateway_rx_info: Some(dev_gw_rx_info),
             downlink_gateway: None,
             downlink_frame: gw::DownlinkFrame {
                 downlink_id,
@@ -206,9 +198,9 @@ impl Data {
             more_device_queue_items: false,
         };
 
-        ctx.select_downlink_gateway()?;
+        ctx.select_downlink_gateway(true)?;
         ctx.set_tx_info()?;
-        ctx.get_next_device_queue_item().await?;
+        ctx.get_next_device_queue_item(true).await?;
         ctx.set_mac_commands().await?;
 
         if ctx._something_to_send() {
@@ -234,7 +226,6 @@ impl Data {
         downlink_id: u32,
         relay_ctx: RelayContext,
         ufs: UplinkFrameSet,
-        dev_gw_rx_info: internal::DeviceGatewayRxInfo,
         tenant: tenant::Tenant,
         application: application::Application,
         device_profile: device_profile::DeviceProfile,
@@ -266,7 +257,6 @@ impl Data {
             must_send,
             must_ack,
             mac_commands,
-            device_gateway_rx_info: Some(dev_gw_rx_info),
             downlink_gateway: None,
             downlink_frame: gw::DownlinkFrame {
                 downlink_id,
@@ -278,9 +268,9 @@ impl Data {
             more_device_queue_items: false,
         };
 
-        ctx.select_downlink_gateway()?;
+        ctx.select_downlink_gateway(true)?;
         ctx.set_tx_info_relayed()?;
-        ctx.get_next_device_queue_item().await?;
+        ctx.get_next_device_queue_item(true).await?;
         ctx.set_mac_commands().await?;
         if ctx._something_to_send() {
             ctx.set_phy_payloads()?;
@@ -301,7 +291,6 @@ impl Data {
         trace!("Handle schedule next-queue item flow");
 
         let (dev, app, ten, dp) = get_all_device_data(dev.dev_eui).await?;
-        let dev_gw = device_gateway::get_rx_info(&dev.dev_eui).await?;
         let (rc, rn) = {
             let ds = dev.get_device_session()?;
             (
@@ -322,7 +311,6 @@ impl Data {
             must_send: false,
             must_ack: false,
             mac_commands: vec![],
-            device_gateway_rx_info: Some(dev_gw),
             downlink_gateway: None,
             downlink_frame: gw::DownlinkFrame {
                 downlink_id,
@@ -334,7 +322,7 @@ impl Data {
             more_device_queue_items: false,
         };
 
-        ctx.select_downlink_gateway()?;
+        ctx.select_downlink_gateway(false)?;
         if ctx._is_class_c() {
             ctx.class_c_update_scheduler_run_after().await?;
             ctx.check_for_first_uplink()?;
@@ -348,7 +336,7 @@ impl Data {
         if ctx._is_class_a() {
             return Err(anyhow!("Invalid device-class"));
         }
-        ctx.get_next_device_queue_item().await?;
+        ctx.get_next_device_queue_item(false).await?;
         if ctx._something_to_send() {
             ctx.set_phy_payloads()?;
             ctx.update_device_queue_item().await?;
@@ -359,14 +347,23 @@ impl Data {
         Ok(())
     }
 
-    fn select_downlink_gateway(&mut self) -> Result<()> {
+    fn select_downlink_gateway(&mut self, class_a: bool) -> Result<()> {
         trace!("Selecting downlink gateway");
+
+        // Not needed when roaming.
+        if self._is_roaming() {
+            self.downlink_gateway = Some(Default::default());
+            return Ok(());
+        }
+
+        let ds = self.device.get_device_session()?;
 
         let gw_down = helpers::select_downlink_gateway(
             Some(self.tenant.id.into()),
-            &self.device.get_device_session()?.region_config_id,
+            &ds.region_config_id,
             self.network_conf.gateway_prefer_min_margin,
-            self.device_gateway_rx_info.as_mut().unwrap(),
+            &ds.gateway_rx_info_history,
+            class_a,
         )?;
 
         self.downlink_frame.gateway_id = hex::encode(&gw_down.gateway_id);
@@ -431,8 +428,22 @@ impl Data {
         Ok(())
     }
 
-    async fn get_next_device_queue_item(&mut self) -> Result<()> {
+    async fn get_next_device_queue_item(&mut self, is_response: bool) -> Result<()> {
         trace!("Getting next device queue-item");
+
+        // If this is a response, the device is operating as a Class-B enabled device and has the
+        // class_b_downlink_only flag set, we do not retrieve a downlink from the queue.
+        if is_response
+            && self
+                .device_profile
+                .class_b_params
+                .as_ref()
+                .map(|v| v.class_b_downlink_only)
+                .unwrap_or_default()
+            && self.device.enabled_class == DeviceClass::B
+        {
+            return Ok(());
+        }
 
         let ds = self.device.get_device_session()?;
 
@@ -529,31 +540,30 @@ impl Data {
             }
 
             // Handle expired payload.
-            if let Some(expires_at) = qi.expires_at {
-                if expires_at < Utc::now() {
-                    device_queue::delete_item(&qi.id)
-                        .await
-                        .context("Delete device queue-item")?;
+            if let Some(expires_at) = qi.expires_at
+                && expires_at < Utc::now()
+            {
+                device_queue::delete_item(&qi.id)
+                    .await
+                    .context("Delete device queue-item")?;
 
-                    let pl = integration_pb::LogEvent {
-                        time: Some(Utc::now().into()),
-                        device_info: Some(device_info.clone()),
-                        level: integration_pb::LogLevel::Error.into(),
-                        code: integration_pb::LogCode::Expired.into(),
-                        description: "Device queue-item discarded because it has expired"
-                            .to_string(),
-                        context: [("queue_item_id".to_string(), qi.id.to_string())]
-                            .iter()
-                            .cloned()
-                            .collect(),
-                    };
+                let pl = integration_pb::LogEvent {
+                    time: Some(Utc::now().into()),
+                    device_info: Some(device_info.clone()),
+                    level: integration_pb::LogLevel::Error.into(),
+                    code: integration_pb::LogCode::Expired.into(),
+                    description: "Device queue-item discarded because it has expired".to_string(),
+                    context: [("queue_item_id".to_string(), qi.id.to_string())]
+                        .iter()
+                        .cloned()
+                        .collect(),
+                };
 
-                    integration::log_event(self.application.id.into(), &self.device.variables, &pl)
-                        .await;
-                    warn!(dev_eui = %self.device.dev_eui, device_queue_item_id = %qi.id, "Device queue-item discarded because it has expired");
+                integration::log_event(self.application.id.into(), &self.device.variables, &pl)
+                    .await;
+                warn!(dev_eui = %self.device.dev_eui, device_queue_item_id = %qi.id, "Device queue-item discarded because it has expired");
 
-                    continue;
-                }
+                continue;
             }
 
             // Handle payload size.
@@ -697,11 +707,11 @@ impl Data {
     }
 
     fn _is_roaming(&self) -> bool {
-        self.uplink_frame_set
-            .as_ref()
-            .unwrap()
-            .roaming_meta_data
-            .is_some()
+        if let Some(uf) = self.uplink_frame_set.as_ref() {
+            uf.roaming_meta_data.is_some()
+        } else {
+            false
+        }
     }
 
     fn set_phy_payloads(&mut self) -> Result<()> {
@@ -1162,12 +1172,42 @@ impl Data {
         let mut wanted_channels: HashMap<usize, lrwn::region::Channel> = HashMap::new();
         let ds = self.device.get_device_session_mut()?;
 
+        // Get the data-rates supported by the device, or else fallback onto
+        // the default min / max DR values.
+        let supported_ul_drs: HashSet<u8> =
+            if self.device_profile.supported_uplink_data_rates.is_empty() {
+                (self.region_conf.get_defaults().min_ul_dr
+                    ..=self.region_conf.get_defaults().max_ul_dr)
+                    .collect()
+            } else {
+                self.device_profile
+                    .supported_uplink_data_rates
+                    .iter()
+                    .filter_map(|&v| v.map(|v| v as u8))
+                    .collect()
+            };
+
         for i in self.region_conf.get_user_defined_uplink_channel_indices() {
-            let c = self.region_conf.get_uplink_channel(i)?;
-            wanted_channels.insert(i, c);
+            // We calculate the data-rates that the channel and device have
+            // in common. It could be that the device only supports a sub-set
+            // of the data-rates provided by the channel. E.g. the channel
+            // might support DR0-5 + DR12-13, but the device might only support
+            // DR0-5.
+            let mut channel = self.region_conf.get_uplink_channel(i)?;
+            let channel_drs: HashSet<u8> = channel.data_rates.into_iter().collect();
+            let mut common_drs: Vec<u8> = channel_drs
+                .intersection(&supported_ul_drs)
+                .cloned()
+                .collect();
+            common_drs.sort();
+
+            if !common_drs.is_empty() {
+                channel.data_rates = common_drs;
+                wanted_channels.insert(i, channel);
+            }
         }
 
-        // cleanup channels that do not exist anydmore
+        // cleanup channels that do not exist anymore
         // these will be disabled by the LinkADRReq channel-mask reconfiguration
         let ds_keys: Vec<usize> = ds
             .extra_uplink_channels
@@ -1189,17 +1229,23 @@ impl Data {
                     *k as usize,
                     lrwn::region::Channel {
                         frequency: v.frequency,
-                        min_dr: v.min_dr as u8,
-                        max_dr: v.max_dr as u8,
+                        data_rates: if v.data_rates.is_empty() {
+                            (v.min_dr..=v.max_dr).map(|v| v as u8).collect()
+                        } else {
+                            v.data_rates.iter().map(|&v| v as u8).collect()
+                        },
                         ..Default::default()
                     },
                 )
             })
             .collect();
 
-        if let Some(block) =
-            maccommand::new_channel::request(3, &current_channels, &wanted_channels)
-        {
+        if let Some(block) = maccommand::new_channel::request(
+            3,
+            &current_channels,
+            &wanted_channels,
+            self.region_conf.clone(),
+        )? {
             self.mac_commands.push(block);
         }
 
@@ -1255,7 +1301,7 @@ impl Data {
 
         let dr = self
             .region_conf
-            .get_data_rate(self.uplink_frame_set.as_ref().unwrap().dr)?;
+            .get_data_rate(true, self.uplink_frame_set.as_ref().unwrap().dr)?;
 
         let ufs = self.uplink_frame_set.as_ref().unwrap();
         let dev_eui = self.device.dev_eui;
@@ -1914,22 +1960,22 @@ impl Data {
                 });
             }
 
-            if let Some(filter) = relay.filters.first() {
-                if !filter.provisioned {
-                    let set = lrwn::MACCommandSet::new(vec![lrwn::MACCommand::FilterListReq(
-                        lrwn::FilterListReqPayload {
-                            filter_list_idx: 0,
-                            filter_list_action: lrwn::FilterListAction::Filter,
-                            filter_list_eui: vec![],
-                        },
-                    )]);
-                    self.mac_commands.push(set);
+            if let Some(filter) = relay.filters.first()
+                && !filter.provisioned
+            {
+                let set = lrwn::MACCommandSet::new(vec![lrwn::MACCommand::FilterListReq(
+                    lrwn::FilterListReqPayload {
+                        filter_list_idx: 0,
+                        filter_list_action: lrwn::FilterListAction::Filter,
+                        filter_list_eui: vec![],
+                    },
+                )]);
+                self.mac_commands.push(set);
 
-                    // Return because we can't add multiple sets and if we would combine
-                    // multiple commands as a single set, it might not fit in a single
-                    // downlink.
-                    return Ok(());
-                }
+                // Return because we can't add multiple sets and if we would combine
+                // multiple commands as a single set, it might not fit in a single
+                // downlink.
+                return Ok(());
             }
         }
 
@@ -2122,7 +2168,7 @@ impl Data {
             self.uplink_frame_set.as_ref().unwrap().dr,
             ds.rx1_dr_offset as usize,
         )?;
-        let rx1_dr = self.region_conf.get_data_rate(rx1_dr_index)?;
+        let rx1_dr = self.region_conf.get_data_rate(false, rx1_dr_index)?;
 
         // set DR to tx_info.
         helpers::set_tx_info_data_rate(&mut tx_info, &rx1_dr)?;
@@ -2154,7 +2200,7 @@ impl Data {
         });
 
         // get remaining payload size
-        let max_pl_size = self.region_conf.get_max_payload_size(
+        let max_pl_size = self.region_conf.get_max_dl_payload_size(
             ds.mac_version().from_proto(),
             self.device_profile.reg_params_revision,
             rx1_dr_index,
@@ -2191,7 +2237,7 @@ impl Data {
             self.uplink_frame_set.as_ref().unwrap().dr,
             relay_ds.rx1_dr_offset as usize,
         )?;
-        let rx1_dr_relay = self.region_conf.get_data_rate(rx1_dr_index_relay)?;
+        let rx1_dr_relay = self.region_conf.get_data_rate(false, rx1_dr_index_relay)?;
 
         // set DR to tx_info.
         helpers::set_tx_info_data_rate(&mut tx_info, &rx1_dr_relay)?;
@@ -2223,7 +2269,7 @@ impl Data {
         });
 
         // get remaining payload size (relay)
-        let max_pl_size_relay = self.region_conf.get_max_payload_size(
+        let max_pl_size_relay = self.region_conf.get_max_dl_payload_size(
             relay_ds.mac_version().from_proto(),
             relay_ctx.device_profile.reg_params_revision,
             rx1_dr_index_relay,
@@ -2233,7 +2279,7 @@ impl Data {
         let rx1_dr_index_ed = self
             .region_conf
             .get_rx1_data_rate_index(relay_ctx.req.metadata.dr, ds.rx1_dr_offset as usize)?;
-        let max_pl_size_ed = self.region_conf.get_max_payload_size(
+        let max_pl_size_ed = self.region_conf.get_max_dl_payload_size(
             ds.mac_version().from_proto(),
             self.device_profile.reg_params_revision,
             rx1_dr_index_ed,
@@ -2276,7 +2322,7 @@ impl Data {
         };
 
         // Set DR to tx-info.
-        let rx2_dr = self.region_conf.get_data_rate(ds.rx2_dr as u8)?;
+        let rx2_dr = self.region_conf.get_data_rate(false, ds.rx2_dr as u8)?;
         helpers::set_tx_info_data_rate(&mut tx_info, &rx2_dr)?;
 
         // set tx power
@@ -2312,7 +2358,7 @@ impl Data {
         }
 
         // get remaining payload size
-        let max_pl_size = self.region_conf.get_max_payload_size(
+        let max_pl_size = self.region_conf.get_max_dl_payload_size(
             ds.mac_version().from_proto(),
             self.device_profile.reg_params_revision,
             ds.rx2_dr as u8,
@@ -2346,7 +2392,9 @@ impl Data {
         };
 
         // Set DR to tx-info.
-        let rx2_dr_relay = self.region_conf.get_data_rate(relay_ds.rx2_dr as u8)?;
+        let rx2_dr_relay = self
+            .region_conf
+            .get_data_rate(false, relay_ds.rx2_dr as u8)?;
         helpers::set_tx_info_data_rate(&mut tx_info, &rx2_dr_relay)?;
 
         // set tx power
@@ -2382,14 +2430,14 @@ impl Data {
         }
 
         // get remaining payload size (relay).
-        let max_pl_size_relay = self.region_conf.get_max_payload_size(
+        let max_pl_size_relay = self.region_conf.get_max_dl_payload_size(
             relay_ds.mac_version().from_proto(),
             relay_ctx.device_profile.reg_params_revision,
             relay_ds.rx2_dr as u8,
         )?;
 
         // get remaining payload size (end-device).
-        let max_pl_size_ed = self.region_conf.get_max_payload_size(
+        let max_pl_size_ed = self.region_conf.get_max_dl_payload_size(
             ds.mac_version().from_proto(),
             self.device_profile.reg_params_revision,
             ds.rx2_dr as u8,
@@ -2436,6 +2484,7 @@ impl Data {
     // as we need to calculate the ping_slot_ts for the tx_info.
     async fn set_tx_info_for_class_b_and_update_scheduler_run_after(&mut self) -> Result<()> {
         trace!("Setting tx-info for Class-B");
+        let conf = config::get();
         let ds = self.device.get_device_session()?;
 
         let gw_down = self.downlink_gateway.as_ref().unwrap();
@@ -2450,7 +2499,7 @@ impl Data {
         // Set DR to tx-info.
         let ping_dr = self
             .region_conf
-            .get_data_rate(ds.class_b_ping_slot_dr as u8)?;
+            .get_data_rate(false, ds.class_b_ping_slot_dr as u8)?;
         helpers::set_tx_info_data_rate(&mut tx_info, &ping_dr)?;
 
         // set tx power
@@ -2463,12 +2512,32 @@ impl Data {
         }
 
         // set timing
-        let now_gps_ts = Utc::now().to_gps_time() + chrono::Duration::try_seconds(1).unwrap();
+        let now_gps_ts = Utc::now().to_gps_time();
         let ping_slot_ts = classb::get_next_ping_slot_after(
-            now_gps_ts,
+            now_gps_ts + chrono::Duration::seconds(1),
             &self.device.get_dev_addr()?,
             ds.class_b_ping_slot_nb as usize,
         )?;
+        let advance_delta = (ping_slot_ts - now_gps_ts).to_std().unwrap_or_default();
+
+        if advance_delta > conf.network.scheduler.class_b_schedule_advance {
+            debug!(advance_delta = ?advance_delta, "Ping-slot too much in advance, updating device scheduler_run_after");
+            let scheduler_run_after =
+                Utc::now() + advance_delta - conf.network.scheduler.class_b_schedule_advance;
+
+            let _ = device::partial_update(
+                self.device.dev_eui,
+                &device::DeviceChangeset {
+                    scheduler_run_after: Some(Some(scheduler_run_after)),
+                    ..Default::default()
+                },
+            )
+            .await?;
+
+            // Terminate the flow.
+            return Err(Error::Abort.into());
+        }
+
         trace!(gps_time_now_ts = %now_gps_ts, ping_slot_ts = %ping_slot_ts, "Calculated ping-slot timestamp");
         tx_info.timing = Some(gw::Timing {
             parameters: Some(gw::timing::Parameters::GpsEpoch(gw::GpsEpochTimingInfo {
@@ -2499,7 +2568,7 @@ impl Data {
         }
 
         // get remaining payload size
-        let max_pl_size = self.region_conf.get_max_payload_size(
+        let max_pl_size = self.region_conf.get_max_dl_payload_size(
             ds.mac_version().from_proto(),
             self.device_profile.reg_params_revision,
             ds.class_b_ping_slot_dr as u8,
@@ -2563,45 +2632,45 @@ impl Data {
             ds.rx1_dr_offset as usize,
         )?;
 
-        let rx1_dr = self.region_conf.get_data_rate(dr_rx1_index)?;
-        let rx2_dr = self.region_conf.get_data_rate(ds.rx2_dr as u8)?;
+        let rx1_dr = self.region_conf.get_data_rate(false, dr_rx1_index)?;
+        let rx2_dr = self.region_conf.get_data_rate(false, ds.rx2_dr as u8)?;
 
         // the calculation below only applies for LORA modulation
-        if let lrwn::region::DataRateModulation::Lora(rx1_dr) = rx1_dr {
-            if let lrwn::region::DataRateModulation::Lora(rx2_dr) = rx2_dr {
-                let tx_power_rx1 = if self.network_conf.downlink_tx_power != -1 {
-                    self.network_conf.downlink_tx_power
-                } else {
-                    self.region_conf.get_downlink_tx_power_eirp(
-                        self.region_conf.get_rx1_frequency_for_uplink_frequency(
-                            self.uplink_frame_set.as_ref().unwrap().tx_info.frequency,
-                        )?,
-                    ) as i32
-                };
+        if let lrwn::region::DataRateModulation::Lora(rx1_dr) = rx1_dr
+            && let lrwn::region::DataRateModulation::Lora(rx2_dr) = rx2_dr
+        {
+            let tx_power_rx1 = if self.network_conf.downlink_tx_power != -1 {
+                self.network_conf.downlink_tx_power
+            } else {
+                self.region_conf.get_downlink_tx_power_eirp(
+                    self.region_conf.get_rx1_frequency_for_uplink_frequency(
+                        self.uplink_frame_set.as_ref().unwrap().tx_info.frequency,
+                    )?,
+                ) as i32
+            };
 
-                let tx_power_rx2 = if self.network_conf.downlink_tx_power != -1 {
-                    self.network_conf.downlink_tx_power
-                } else {
-                    self.region_conf
-                        .get_downlink_tx_power_eirp(ds.rx2_frequency) as i32
-                };
+            let tx_power_rx2 = if self.network_conf.downlink_tx_power != -1 {
+                self.network_conf.downlink_tx_power
+            } else {
+                self.region_conf
+                    .get_downlink_tx_power_eirp(ds.rx2_frequency) as i32
+            };
 
-                let link_budget_rx1 = sensitivity::calculate_link_budget(
-                    rx1_dr.bandwidth,
-                    6.0,
-                    config::get_required_snr_for_sf(rx1_dr.spreading_factor)?,
-                    tx_power_rx1 as f32,
-                );
+            let link_budget_rx1 = sensitivity::calculate_link_budget(
+                rx1_dr.bandwidth,
+                6.0,
+                config::get_required_snr_for_sf(rx1_dr.spreading_factor)?,
+                tx_power_rx1 as f32,
+            );
 
-                let link_budget_rx2 = sensitivity::calculate_link_budget(
-                    rx2_dr.bandwidth,
-                    6.0,
-                    config::get_required_snr_for_sf(rx2_dr.spreading_factor)?,
-                    tx_power_rx2 as f32,
-                );
+            let link_budget_rx2 = sensitivity::calculate_link_budget(
+                rx2_dr.bandwidth,
+                6.0,
+                config::get_required_snr_for_sf(rx2_dr.spreading_factor)?,
+                tx_power_rx2 as f32,
+            );
 
-                return Ok(link_budget_rx2 > link_budget_rx1);
-            }
+            return Ok(link_budget_rx2 > link_budget_rx1);
         }
 
         Ok(false)
@@ -2621,16 +2690,18 @@ fn filter_mac_commands(
     .collect();
 
     let mut filtered_mac_commands: Vec<lrwn::MACCommandSet> = Vec::new();
+    let conf = config::get();
+    let max_mac_command_error_count = conf.network.max_mac_command_error_count;
 
     'outer: for mac_command_set in mac_commands {
         for mac_command in &**mac_command_set {
-            // Check if it doesn't exceed the max error error count.
+            // Check if it doesn't exceed the max error count.
             if device_session
                 .mac_command_error_count
                 .get(&(mac_command.cid().to_u8() as u32))
                 .cloned()
                 .unwrap_or_default()
-                > 1
+                > max_mac_command_error_count
             {
                 continue 'outer;
             }
@@ -2675,7 +2746,7 @@ mod test {
 
         let dp = device_profile::create(device_profile::DeviceProfile {
             name: "dp".into(),
-            tenant_id: t.id,
+            tenant_id: Some(t.id),
             relay_params: Some(fields::RelayParams {
                 is_relay: true,
                 ..Default::default()
@@ -2925,7 +2996,6 @@ mod test {
                 must_send: false,
                 must_ack: false,
                 mac_commands: vec![],
-                device_gateway_rx_info: None,
                 downlink_gateway: None,
                 downlink_frame: Default::default(),
                 downlink_frame_items: vec![DownlinkFrameItem {
@@ -2937,7 +3007,7 @@ mod test {
                 more_device_queue_items: false,
             };
 
-            ctx.get_next_device_queue_item().await.unwrap();
+            ctx.get_next_device_queue_item(false).await.unwrap();
 
             // Integrations are handled async.
             sleep(Duration::from_millis(100)).await;
@@ -3403,7 +3473,7 @@ mod test {
 
         let dp_relay = device_profile::create(device_profile::DeviceProfile {
             name: "dp-relay".into(),
-            tenant_id: t.id,
+            tenant_id: Some(t.id),
             relay_params: Some(fields::RelayParams {
                 is_relay: true,
                 ..Default::default()
@@ -3415,7 +3485,7 @@ mod test {
 
         let dp_ed = device_profile::create(device_profile::DeviceProfile {
             name: "dp-ed".into(),
-            tenant_id: t.id,
+            tenant_id: Some(t.id),
             relay_params: Some(fields::RelayParams {
                 is_relay_ed: true,
                 ed_uplink_limit_bucket_size: 2,
@@ -3495,7 +3565,6 @@ mod test {
                 must_send: false,
                 must_ack: false,
                 mac_commands: vec![],
-                device_gateway_rx_info: None,
                 downlink_gateway: None,
                 downlink_frame: Default::default(),
                 downlink_frame_items: vec![],
@@ -3869,7 +3938,7 @@ mod test {
 
         let dp_relay = device_profile::create(device_profile::DeviceProfile {
             name: "dp-relay".into(),
-            tenant_id: t.id,
+            tenant_id: Some(t.id),
             relay_params: Some(fields::RelayParams {
                 is_relay: true,
                 ..Default::default()
@@ -3881,7 +3950,7 @@ mod test {
 
         let dp_ed = device_profile::create(device_profile::DeviceProfile {
             name: "dp-ed".into(),
-            tenant_id: t.id,
+            tenant_id: Some(t.id),
             ..Default::default()
         })
         .await
@@ -3947,7 +4016,6 @@ mod test {
                 must_send: false,
                 must_ack: false,
                 mac_commands: vec![],
-                device_gateway_rx_info: None,
                 downlink_gateway: None,
                 downlink_frame: Default::default(),
                 downlink_frame_items: vec![],
@@ -4073,7 +4141,6 @@ mod test {
                 must_send: false,
                 must_ack: false,
                 mac_commands: vec![],
-                device_gateway_rx_info: None,
                 downlink_gateway: None,
                 downlink_frame: Default::default(),
                 downlink_frame_items: vec![],
@@ -4190,7 +4257,6 @@ mod test {
                 must_send: false,
                 must_ack: false,
                 mac_commands: vec![],
-                device_gateway_rx_info: None,
                 downlink_gateway: None,
                 downlink_frame: Default::default(),
                 downlink_frame_items: vec![],
@@ -4317,7 +4383,6 @@ mod test {
                 must_send: false,
                 must_ack: false,
                 mac_commands: vec![],
-                device_gateway_rx_info: None,
                 downlink_gateway: None,
                 downlink_frame: Default::default(),
                 downlink_frame_items: vec![],
@@ -4511,7 +4576,7 @@ mod test {
 
         let dp_relay = device_profile::create(device_profile::DeviceProfile {
             name: "dp-relay".into(),
-            tenant_id: t.id,
+            tenant_id: Some(t.id),
             relay_params: Some(fields::RelayParams {
                 is_relay: true,
                 ..Default::default()
@@ -4523,7 +4588,7 @@ mod test {
 
         let dp_ed = device_profile::create(device_profile::DeviceProfile {
             name: "dp-ed".into(),
-            tenant_id: t.id,
+            tenant_id: Some(t.id),
             ..Default::default()
         })
         .await
@@ -4588,7 +4653,6 @@ mod test {
                 must_send: false,
                 must_ack: false,
                 mac_commands: vec![],
-                device_gateway_rx_info: None,
                 downlink_gateway: None,
                 downlink_frame: Default::default(),
                 downlink_frame_items: vec![],

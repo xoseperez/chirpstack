@@ -6,9 +6,8 @@ use uuid::Uuid;
 
 use super::assert;
 use crate::storage::{
-    application,
-    device::{self, DeviceClass},
-    device_profile, device_queue, fields, gateway, mac_command, reset_redis, tenant,
+    application, device, device::DeviceClass, device_profile, device_queue, fields, gateway,
+    mac_command, reset_redis, tenant,
 };
 use crate::{config, gateway::backend as gateway_backend, integration, region, test, uplink};
 use chirpstack_api::{common, gw, integration as integration_pb, internal, stream};
@@ -79,7 +78,7 @@ async fn test_gateway_filtering() {
 
     let dp = device_profile::create(device_profile::DeviceProfile {
         name: "dp".into(),
-        tenant_id: t_a.id,
+        tenant_id: Some(t_a.id),
         region: lrwn::region::CommonName::EU868,
         mac_version: lrwn::region::MacVersion::LORAWAN_1_0_2,
         reg_params_revision: lrwn::region::Revision::A,
@@ -240,7 +239,7 @@ async fn test_lorawan_10_errors() {
 
     let dp = device_profile::create(device_profile::DeviceProfile {
         name: "dp".into(),
-        tenant_id: t.id,
+        tenant_id: Some(t.id),
         region: lrwn::region::CommonName::EU868,
         mac_version: lrwn::region::MacVersion::LORAWAN_1_0_2,
         reg_params_revision: lrwn::region::Revision::A,
@@ -440,7 +439,7 @@ async fn test_lorawan_11_errors() {
 
     let dp = device_profile::create(device_profile::DeviceProfile {
         name: "dp".into(),
-        tenant_id: t.id,
+        tenant_id: Some(t.id),
         region: lrwn::region::CommonName::EU868,
         mac_version: lrwn::region::MacVersion::LORAWAN_1_1_0,
         reg_params_revision: lrwn::region::Revision::RP002_1_0_3,
@@ -597,7 +596,7 @@ async fn test_lorawan_10_skip_f_cnt() {
 
     let dp = device_profile::create(device_profile::DeviceProfile {
         name: "dp".into(),
-        tenant_id: t.id,
+        tenant_id: Some(t.id),
         region: lrwn::region::CommonName::EU868,
         mac_version: lrwn::region::MacVersion::LORAWAN_1_0_2,
         reg_params_revision: lrwn::region::Revision::A,
@@ -796,7 +795,7 @@ async fn test_lorawan_10_device_disabled() {
 
     let dp = device_profile::create(device_profile::DeviceProfile {
         name: "dp".into(),
-        tenant_id: t.id,
+        tenant_id: Some(t.id),
         region: lrwn::region::CommonName::EU868,
         mac_version: lrwn::region::MacVersion::LORAWAN_1_0_2,
         reg_params_revision: lrwn::region::Revision::A,
@@ -914,7 +913,7 @@ async fn test_lorawan_10_uplink() {
 
     let dp = device_profile::create(device_profile::DeviceProfile {
         name: "dp".into(),
-        tenant_id: t.id,
+        tenant_id: Some(t.id),
         region: lrwn::region::CommonName::EU868,
         mac_version: lrwn::region::MacVersion::LORAWAN_1_0_4,
         reg_params_revision: lrwn::region::Revision::RP002_1_0_3,
@@ -1038,8 +1037,8 @@ async fn test_lorawan_10_uplink() {
                         .extra_channels
                         .push(config::ExtraChannel {
                             frequency: 867300000,
-                            min_dr: 10,
-                            max_dr: 11,
+                            data_rates: vec![10, 11],
+                            ..Default::default()
                         });
                     config::set(conf);
                     region::setup().unwrap();
@@ -1560,7 +1559,7 @@ async fn test_lorawan_10_end_to_end_enc() {
 
     let dp = device_profile::create(device_profile::DeviceProfile {
         name: "dp".into(),
-        tenant_id: t.id,
+        tenant_id: Some(t.id),
         region: lrwn::region::CommonName::EU868,
         mac_version: lrwn::region::MacVersion::LORAWAN_1_0_4,
         reg_params_revision: lrwn::region::Revision::RP002_1_0_3,
@@ -1893,7 +1892,7 @@ async fn test_lorawan_11_uplink() {
 
     let dp = device_profile::create(device_profile::DeviceProfile {
         name: "dp".into(),
-        tenant_id: t.id,
+        tenant_id: Some(t.id),
         region: lrwn::region::CommonName::EU868,
         mac_version: lrwn::region::MacVersion::LORAWAN_1_1_0,
         reg_params_revision: lrwn::region::Revision::RP002_1_0_3,
@@ -2137,7 +2136,7 @@ async fn test_lorawan_10_rx_delay() {
 
     let mut dp = device_profile::create(device_profile::DeviceProfile {
         name: "dp".into(),
-        tenant_id: t.id,
+        tenant_id: Some(t.id),
         region: lrwn::region::CommonName::EU868,
         mac_version: lrwn::region::MacVersion::LORAWAN_1_0_4,
         reg_params_revision: lrwn::region::Revision::RP002_1_0_3,
@@ -2606,7 +2605,7 @@ async fn test_lorawan_10_mac_commands() {
 
     let dp = device_profile::create(device_profile::DeviceProfile {
         name: "dp".into(),
-        tenant_id: t.id,
+        tenant_id: Some(t.id),
         region: lrwn::region::CommonName::EU868,
         mac_version: lrwn::region::MacVersion::LORAWAN_1_0_4,
         reg_params_revision: lrwn::region::Revision::RP002_1_0_3,
@@ -2980,7 +2979,7 @@ async fn test_lorawan_11_mac_commands() {
 
     let dp = device_profile::create(device_profile::DeviceProfile {
         name: "dp".into(),
-        tenant_id: t.id,
+        tenant_id: Some(t.id),
         region: lrwn::region::CommonName::EU868,
         mac_version: lrwn::region::MacVersion::LORAWAN_1_1_0,
         reg_params_revision: lrwn::region::Revision::RP002_1_0_3,
@@ -3177,10 +3176,14 @@ async fn test_lorawan_10_device_queue() {
 
     let dp = device_profile::create(device_profile::DeviceProfile {
         name: "dp".into(),
-        tenant_id: t.id,
+        tenant_id: Some(t.id),
         region: lrwn::region::CommonName::EU868,
         mac_version: lrwn::region::MacVersion::LORAWAN_1_0_4,
         reg_params_revision: lrwn::region::Revision::RP002_1_0_3,
+        class_b_params: Some(fields::ClassBParams {
+            class_b_downlink_only: true,
+            ..Default::default()
+        }),
         supports_otaa: true,
         ..Default::default()
     })
@@ -3307,6 +3310,55 @@ async fn test_lorawan_10_device_queue() {
                         mic: Some([180, 235, 116, 59]),
                     },
                 ]),
+            ],
+        },
+        Test {
+            name: "unconfirmed uplink + one unconfirmed downlink payload in queue (Class-B device / Class-B downlink only)".into(),
+            dev_eui: dev.dev_eui,
+            device_queue_items: vec![device_queue::DeviceQueueItem {
+                id: Uuid::nil().into(),
+                dev_eui: dev.dev_eui,
+                f_port: 10,
+                data: vec![1, 2, 3, 4],
+                ..Default::default()
+            }],
+            before_func: Some(Box::new(move || {
+                Box::pin(async move {
+                    device::partial_update(dev.dev_eui, &device::DeviceChangeset {
+                        enabled_class: Some(device::DeviceClass::B),
+                        ..Default::default()
+                    }).await.unwrap();
+                })
+            })),
+            after_func: Some(Box::new(move || {
+                Box::pin(async move {
+                    device::partial_update(dev.dev_eui, &device::DeviceChangeset {
+                        enabled_class: Some(device::DeviceClass::A),
+                        ..Default::default()
+                    }).await.unwrap();
+                })
+            })),
+            device_session: Some(ds.clone()),
+            tx_info: tx_info.clone(),
+            rx_info: rx_info.clone(),
+            phy_payload: lrwn::PhyPayload {
+                mhdr: lrwn::MHDR {
+                    f_type: lrwn::FType::UnconfirmedDataUp,
+                    major: lrwn::Major::LoRaWANR1,
+                },
+                payload: lrwn::Payload::MACPayload(lrwn::MACPayload {
+                    fhdr: lrwn::FHDR {
+                        devaddr: lrwn::DevAddr::from_be_bytes([1, 2, 3, 4]),
+                        f_cnt: 10,
+                        ..Default::default()
+                    },
+                    f_port: Some(1),
+                    frm_payload: None,
+                }),
+                mic: Some([160, 195, 68, 8]),
+            },
+            assert: vec![
+                assert::no_downlink_frame(),
             ],
         },
         Test {
@@ -3657,7 +3709,7 @@ async fn test_lorawan_11_device_queue() {
 
     let dp = device_profile::create(device_profile::DeviceProfile {
         name: "dp".into(),
-        tenant_id: t.id,
+        tenant_id: Some(t.id),
         region: lrwn::region::CommonName::EU868,
         mac_version: lrwn::region::MacVersion::LORAWAN_1_1_0,
         reg_params_revision: lrwn::region::Revision::RP002_1_0_3,
@@ -4140,7 +4192,7 @@ async fn test_lorawan_10_adr() {
 
     let dp = device_profile::create(device_profile::DeviceProfile {
         name: "dp".into(),
-        tenant_id: t.id,
+        tenant_id: Some(t.id),
         region: lrwn::region::CommonName::EU868,
         mac_version: lrwn::region::MacVersion::LORAWAN_1_0_4,
         reg_params_revision: lrwn::region::Revision::RP002_1_0_3,
@@ -4974,7 +5026,7 @@ async fn test_lorawan_10_device_status_request() {
 
     let dp = device_profile::create(device_profile::DeviceProfile {
         name: "dp".into(),
-        tenant_id: t.id,
+        tenant_id: Some(t.id),
         region: lrwn::region::CommonName::EU868,
         mac_version: lrwn::region::MacVersion::LORAWAN_1_0_4,
         reg_params_revision: lrwn::region::Revision::RP002_1_0_3,
@@ -5243,7 +5295,7 @@ async fn test_lorawan_11_receive_window_selection() {
 
     let dp = device_profile::create(device_profile::DeviceProfile {
         name: "dp".into(),
-        tenant_id: t.id,
+        tenant_id: Some(t.id),
         region: lrwn::region::CommonName::EU868,
         mac_version: lrwn::region::MacVersion::LORAWAN_1_1_0,
         reg_params_revision: lrwn::region::Revision::RP002_1_0_3,

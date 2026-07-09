@@ -8,6 +8,7 @@ diesel::table! {
         name -> Varchar,
         is_admin -> Bool,
         tenant_id -> Nullable<Uuid>,
+        is_read_only -> Bool,
     }
 }
 
@@ -86,7 +87,7 @@ diesel::table! {
 diesel::table! {
     device_profile (id) {
         id -> Uuid,
-        tenant_id -> Uuid,
+        tenant_id -> Nullable<Uuid>,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
         #[max_length = 100]
@@ -121,6 +122,24 @@ diesel::table! {
         class_c_params -> Nullable<Jsonb>,
         relay_params -> Nullable<Jsonb>,
         app_layer_params -> Jsonb,
+        device_id -> Nullable<Uuid>,
+        #[max_length = 20]
+        firmware_version -> Varchar,
+        vendor_profile_id -> Int4,
+        supported_uplink_data_rates -> Array<Nullable<Int2>>,
+    }
+}
+
+diesel::table! {
+    device_profile_device (id) {
+        id -> Uuid,
+        vendor_id -> Uuid,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+        #[max_length = 100]
+        name -> Varchar,
+        description -> Text,
+        metadata -> Jsonb,
     }
 }
 
@@ -165,6 +184,18 @@ diesel::table! {
         tags -> Jsonb,
         measurements -> Jsonb,
         auto_detect_measurements -> Bool,
+    }
+}
+
+diesel::table! {
+    device_profile_vendor (id) {
+        id -> Uuid,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+        name -> Text,
+        vendor_id -> Int4,
+        ouis -> Array<Nullable<Text>>,
+        metadata -> Jsonb,
     }
 }
 
@@ -275,6 +306,7 @@ diesel::table! {
         tls_certificate -> Nullable<Bytea>,
         tags -> Jsonb,
         properties -> Jsonb,
+        downlink_priority -> Int2,
     }
 }
 
@@ -371,6 +403,7 @@ diesel::table! {
         private_gateways_up -> Bool,
         private_gateways_down -> Bool,
         tags -> Jsonb,
+        dev_addr_prefixes -> Array<Nullable<Text>>,
     }
 }
 
@@ -408,7 +441,9 @@ diesel::joinable!(application_integration -> application (application_id));
 diesel::joinable!(device -> application (application_id));
 diesel::joinable!(device -> device_profile (device_profile_id));
 diesel::joinable!(device_keys -> device (dev_eui));
+diesel::joinable!(device_profile -> device_profile_device (device_id));
 diesel::joinable!(device_profile -> tenant (tenant_id));
+diesel::joinable!(device_profile_device -> device_profile_vendor (vendor_id));
 diesel::joinable!(device_queue_item -> device (dev_eui));
 diesel::joinable!(fuota_deployment -> application (application_id));
 diesel::joinable!(fuota_deployment -> device_profile (device_profile_id));
@@ -436,7 +471,9 @@ diesel::allow_tables_to_appear_in_same_query!(
     device,
     device_keys,
     device_profile,
+    device_profile_device,
     device_profile_template,
+    device_profile_vendor,
     device_queue_item,
     fuota_deployment,
     fuota_deployment_device,

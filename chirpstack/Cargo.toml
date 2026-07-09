@@ -24,8 +24,11 @@
   validator.workspace = true
 
   # Database
-  email_address.workspace = true
-  diesel = { workspace = true, features = ["chrono", "numeric"] }
+  diesel = { workspace = true, features = [
+    "chrono",
+    "numeric",
+    "64-column-tables",
+  ] }
   diesel_migrations.workspace = true
   diesel-async.workspace = true
   tokio-postgres = { workspace = true, optional = true }
@@ -67,6 +70,7 @@
   tokio-executor-trait.workspace = true
   tokio-reactor-trait.workspace = true
   rdkafka.workspace = true
+  rdkafka-sys.workspace = true
 
   # gRPC and Protobuf
   tonic-web.workspace = true
@@ -103,7 +107,7 @@
   pem.workspace = true
   x509-parser.workspace = true
   rsa.workspace = true
-  sec1.workspace = true
+  p256.workspace = true
   rcgen.workspace = true
   oauth2.workspace = true
   openidconnect.workspace = true
@@ -127,9 +131,9 @@
   petgraph.workspace = true
   prometheus-client.workspace = true
   pin-project.workspace = true
-  scoped-futures.workspace = true
   signal-hook.workspace = true
   signal-hook-tokio.workspace = true
+  rpassword.workspace = true
 
 # Development and testing
 [dev-dependencies]

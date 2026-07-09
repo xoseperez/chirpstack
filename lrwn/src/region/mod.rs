@@ -145,6 +145,7 @@ pub enum Revision {
     RP002_1_0_2,
     RP002_1_0_3,
     RP002_1_0_4,
+    RP002_1_0_5,
 }
 
 impl Revision {
@@ -156,7 +157,8 @@ impl Revision {
             Revision::RP002_1_0_1 => "RP002-1.0.1".to_string(),
             Revision::RP002_1_0_2 => "RP002-1.0.2".to_string(),
             Revision::RP002_1_0_3 => "RP002-1.0.3".to_string(),
-            Revision::RP002_1_0_4 | Revision::Latest => "RP002-1.0.4".to_string(),
+            Revision::RP002_1_0_4 => "RP002-1.0.4".to_string(),
+            Revision::RP002_1_0_5 | Revision::Latest => "RP002-1.0.5".to_string(),
         }
     }
 }
@@ -185,6 +187,7 @@ impl FromStr for Revision {
             "RP002-1.0.2" => Revision::RP002_1_0_2,
             "RP002-1.0.3" => Revision::RP002_1_0_3,
             "RP002-1.0.4" => Revision::RP002_1_0_4,
+            "RP002-1.0.5" => Revision::RP002_1_0_5,
             _ => {
                 return Err(anyhow!("Unexpected Revision: {}", s));
             }
@@ -382,6 +385,8 @@ pub struct Defaults {
     pub rx2_delay: Duration,
     pub join_accept_delay1: Duration,
     pub join_accept_delay2: Duration,
+    pub min_ul_dr: u8,
+    pub max_ul_dr: u8,
 }
 
 #[derive(Clone)]
@@ -395,8 +400,7 @@ pub struct MaxPayloadSize {
 #[derive(Clone, Default)]
 pub struct Channel {
     pub frequency: u32,
-    pub min_dr: u8,
-    pub max_dr: u8,
+    pub data_rates: Vec<u8>,
     pub enabled: bool,
     pub user_defined: bool,
 }
@@ -409,13 +413,28 @@ pub trait Region {
     fn get_data_rate_index(&self, uplink: bool, modulation: &DataRateModulation) -> Result<u8>;
 
     /// Returns the modulation parameters given the data-rate.
-    fn get_data_rate(&self, dr: u8) -> Result<DataRateModulation>;
+    fn get_data_rate(&self, uplink: bool, dr_index: u8) -> Result<DataRateModulation>;
 
-    /// Returns the max-payload size for the given data-rate index, protocol version
+    /// Returns the NewChannelReq data-rate range for the given data-rates.
+    /// Notes:
+    /// * It is expected that the provided range is sorted.
+    /// * By default this returns the first item as min_dr and the last item
+    ///   as max_dr. For some regions, there can be gaps in the range and a
+    ///   special encoding is used (e.g. in case of EU868).
+    fn get_new_channel_req_dr_range(&self, data_rates: &[u8]) -> Result<(u8, u8)>;
+
+    /// Returns the data-rates, given a min_dr / max_dr.
+    fn get_data_rates_for_new_channel_req_dr_range(
+        &self,
+        min_dr: u8,
+        max_dr: u8,
+    ) -> Result<Vec<u8>>;
+
+    /// Returns the max downlink payload-size for the given data-rate index, protocol version
     /// and regional-parameters revision.
     /// When the version or revision is unknown, it will return the most recent
     /// implemented revision values.
-    fn get_max_payload_size(
+    fn get_max_dl_payload_size(
         &self,
         mac_version: MacVersion,
         reg_params_revision: Revision,
@@ -430,7 +449,7 @@ pub trait Region {
 
     /// Add an extra (user-configured) uplink / downlink channel.
     /// Note: this is not supported by every region.
-    fn add_channel(&mut self, frequency: u32, min_dr: u8, max_dr: u8) -> Result<()>;
+    fn add_channel(&mut self, frequency: u32, data_rates: Vec<u8>) -> Result<()>;
 
     /// Returns the uplink channel for the given index.
     fn get_uplink_channel(&self, channel: usize) -> Result<Channel>;
@@ -522,8 +541,8 @@ struct RegionBaseConfig {
     supports_user_channels: bool,
     cf_list_min_dr: u8,
     cf_list_max_dr: u8,
-    data_rates: HashMap<u8, DataRate>,
-    max_payload_size_per_dr: HashMap<MacVersion, HashMap<Revision, HashMap<u8, MaxPayloadSize>>>,
+    data_rates: Vec<(u8, DataRate)>,
+    max_dl_payload_size_per_dr: HashMap<MacVersion, HashMap<Revision, HashMap<u8, MaxPayloadSize>>>,
     rx1_data_rate_table: HashMap<u8, Vec<u8>>,
     tx_power_offsets: Vec<isize>,
     uplink_channels: Vec<Channel>,
@@ -545,25 +564,54 @@ impl RegionBaseConfig {
         Err(anyhow!("Unknown data-rate: {:?}", modulation))
     }
 
-    fn get_data_rate(&self, dr: u8) -> Result<DataRateModulation> {
-        Ok(self
-            .data_rates
-            .get(&dr)
-            .ok_or_else(|| anyhow!("Unknown data-rate index"))?
-            .modulation
-            .clone())
+    fn get_data_rate(&self, uplink: bool, dr_index: u8) -> Result<DataRateModulation> {
+        for (i, dr) in &self.data_rates {
+            if uplink != dr.uplink && uplink == dr.downlink {
+                continue;
+            }
+
+            if *i == dr_index {
+                return Ok(dr.modulation.clone());
+            }
+        }
+
+        Err(anyhow!(
+            "Unknown data-rate index, uplink {}, dr: {}",
+            uplink,
+            dr_index
+        ))
     }
 
-    fn get_max_payload_size(
+    fn get_new_channel_req_dr_range(&self, data_rates: &[u8]) -> Result<(u8, u8)> {
+        if data_rates.is_empty() {
+            return Err(anyhow!("data_rates can not be empty"));
+        }
+
+        Ok((data_rates[0], data_rates[data_rates.len() - 1]))
+    }
+
+    fn get_data_rates_for_new_channel_req_dr_range(
+        &self,
+        min_dr: u8,
+        max_dr: u8,
+    ) -> Result<Vec<u8>> {
+        if max_dr < min_dr {
+            return Err(anyhow!("Invalid min_dr and / or max_dr, max_dr < min_dr"));
+        }
+
+        Ok((min_dr..=max_dr).collect())
+    }
+
+    fn get_max_dl_payload_size(
         &self,
         mac_version: MacVersion,
         reg_params_revision: Revision,
         dr: u8,
     ) -> Result<MaxPayloadSize> {
-        let reg_params_map = match self.max_payload_size_per_dr.get(&mac_version) {
+        let reg_params_map = match self.max_dl_payload_size_per_dr.get(&mac_version) {
             Some(v) => v,
             None => self
-                .max_payload_size_per_dr
+                .max_dl_payload_size_per_dr
                 .get(&MacVersion::Latest)
                 .ok_or_else(|| anyhow!("Unknown mac-version"))?,
         };
@@ -599,7 +647,7 @@ impl RegionBaseConfig {
             .ok_or_else(|| anyhow!("Invalid tx-power"))?)
     }
 
-    fn add_channel(&mut self, frequency: u32, min_dr: u8, max_dr: u8) -> Result<()> {
+    fn add_channel(&mut self, frequency: u32, data_rates: Vec<u8>) -> Result<()> {
         if !self.supports_user_channels {
             return Err(anyhow!(
                 "User defined channels are not supported for this band"
@@ -608,8 +656,7 @@ impl RegionBaseConfig {
 
         let c = Channel {
             frequency,
-            min_dr,
-            max_dr,
+            data_rates,
             user_defined: true,
             enabled: frequency != 0,
         };
@@ -638,7 +685,7 @@ impl RegionBaseConfig {
         Err(anyhow!("Unknown channel for frequency: {}", frequency))
     }
 
-    fn get_uplink_channel_index_for_freq_dr(&self, frequency: u32, dr: u8) -> Result<usize> {
+    fn get_uplink_channel_index_for_freq_dr(&self, frequency: u32, uplink_dr: u8) -> Result<usize> {
         for user_defined in &[true, false] {
             let i = match self.get_uplink_channel_index(frequency, *user_defined) {
                 Ok(v) => v,
@@ -653,7 +700,7 @@ impl RegionBaseConfig {
             // eg EU868:
             //  channel 1 (868.3 DR 0-5)
             //  channel x (868.3 DR 6)
-            if c.min_dr <= dr && c.max_dr >= dr {
+            if c.data_rates.contains(&uplink_dr) {
                 return Ok(i);
             }
         }
@@ -661,7 +708,7 @@ impl RegionBaseConfig {
         Err(anyhow!(
             "No channel found for frequency: {}, dr: {}",
             frequency,
-            dr
+            uplink_dr,
         ))
     }
 
@@ -742,10 +789,7 @@ impl RegionBaseConfig {
     fn get_enabled_uplink_data_rates(&self) -> Vec<u8> {
         let mut out: HashSet<u8> = HashSet::new();
         for uc in &self.uplink_channels {
-            // ..=max_dr: inclusive range, we want to include max_dr
-            for dr in uc.min_dr..=uc.max_dr {
-                out.insert(dr);
-            }
+            out.extend(uc.data_rates.iter());
         }
 
         let mut out: Vec<u8> = out.iter().cloned().collect();
@@ -779,8 +823,8 @@ impl RegionBaseConfig {
         for c in &self.uplink_channels {
             if c.user_defined
                 && i < channels.len()
-                && c.min_dr == self.cf_list_min_dr
-                && c.max_dr == self.cf_list_max_dr
+                && c.data_rates.first().cloned().unwrap_or_default() == self.cf_list_min_dr
+                && c.data_rates.last().cloned().unwrap_or_default() == self.cf_list_max_dr
             {
                 channels[i] = c.frequency;
                 i += 1;

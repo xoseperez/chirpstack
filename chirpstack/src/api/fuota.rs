@@ -12,7 +12,7 @@ use crate::api::auth::validator;
 use crate::api::error::ToStatus;
 use crate::api::helpers::{self, FromProto, ToProto};
 use crate::devaddr::get_random_dev_addr;
-use crate::storage::{fields, fuota};
+use crate::storage::{fields, fuota, tenant};
 
 pub struct Fuota {
     validator: validator::RequestValidator,
@@ -43,15 +43,23 @@ impl FuotaService for Fuota {
         self.validator
             .validate(
                 request.extensions(),
-                validator::ValidateFuotaDeploymentsAccess::new(validator::Flag::Create, app_id),
+                validator::ValidateFuotaDeploymentsAccess::new(
+                    validator::Flag::Create,
+                    None,
+                    Some(app_id),
+                ),
             )
             .await?;
+
+        let t = tenant::get_for_application_id(app_id)
+            .await
+            .map_err(|e| e.status())?;
 
         let mut dp = fuota::FuotaDeployment {
             name: req_dp.name.clone(),
             application_id: app_id.into(),
             device_profile_id: dp_id.into(),
-            multicast_addr: get_random_dev_addr(),
+            multicast_addr: get_random_dev_addr(&t.get_dev_addr_prefixes()),
             multicast_key: get_random_aes_key(),
             multicast_group_type: match req_dp.multicast_group_type() {
                 api::MulticastGroupType::ClassB => "B",
@@ -321,19 +329,32 @@ impl FuotaService for Fuota {
         request: Request<api::ListFuotaDeploymentsRequest>,
     ) -> Result<Response<api::ListFuotaDeploymentsResponse>, Status> {
         let req = request.get_ref();
-        let app_id = Uuid::from_str(&req.application_id).map_err(|e| e.status())?;
+        let tenant_id = if req.tenant_id.is_empty() {
+            None
+        } else {
+            Some(Uuid::from_str(&req.tenant_id).map_err(|e| e.status())?)
+        };
+        let app_id = if req.application_id.is_empty() {
+            None
+        } else {
+            Some(Uuid::from_str(&req.application_id).map_err(|e| e.status())?)
+        };
 
         self.validator
             .validate(
                 request.extensions(),
-                validator::ValidateFuotaDeploymentsAccess::new(validator::Flag::List, app_id),
+                validator::ValidateFuotaDeploymentsAccess::new(
+                    validator::Flag::List,
+                    tenant_id,
+                    app_id,
+                ),
             )
             .await?;
 
-        let count = fuota::get_deployment_count(app_id)
+        let count = fuota::get_deployment_count(tenant_id, app_id)
             .await
             .map_err(|e| e.status())?;
-        let items = fuota::list_deployments(app_id, req.limit as i64, req.offset as i64)
+        let items = fuota::list_deployments(tenant_id, app_id, req.limit as i64, req.offset as i64)
             .await
             .map_err(|e| e.status())?;
 
@@ -354,6 +375,8 @@ impl FuotaService for Fuota {
                         .as_ref()
                         .map(helpers::datetime_to_prost_timestamp),
                     name: d.name.clone(),
+                    application_id: d.application_id.to_string(),
+                    application_name: d.application_name.clone(),
                 })
                 .collect(),
         });
@@ -687,7 +710,7 @@ mod test {
 
         // create dp
         let dp = device_profile::create(device_profile::DeviceProfile {
-            tenant_id: t.id,
+            tenant_id: Some(t.id),
             name: "test-dp".into(),
             ..Default::default()
         })
@@ -789,6 +812,7 @@ mod test {
         let list_req = get_request(
             &u.id,
             api::ListFuotaDeploymentsRequest {
+                tenant_id: "".to_string(),
                 application_id: app.id.to_string(),
                 limit: 10,
                 offset: 0,

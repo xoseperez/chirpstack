@@ -69,7 +69,7 @@ impl Payload {
                     }
                     0x01 => Payload::RejoinRequestType1(RejoinRequestType1Payload::from_slice(b)?),
                     _ => {
-                        return Err(anyhow!("invalid RejoinType"));
+                        return Err(anyhow!("Invalid RejoinType: {}", b[0]));
                     }
                 }
             }
@@ -277,12 +277,12 @@ impl MACPayload {
             }
 
             // mac-commands must have f_port=0
-            if let FRMPayload::MACCommandSet(_) = &self.frm_payload.as_ref().unwrap() {
-                if self.f_port.unwrap() != 0 {
-                    return Err(anyhow!(
-                        "f_port must be set to 0 for mac-commands in frm_payload"
-                    ));
-                }
+            if let FRMPayload::MACCommandSet(_) = &self.frm_payload.as_ref().unwrap()
+                && self.f_port.unwrap() != 0
+            {
+                return Err(anyhow!(
+                    "f_port must be set to 0 for mac-commands in frm_payload"
+                ));
             }
         }
 
@@ -327,7 +327,7 @@ impl RejoinRequestType02Payload {
                 0x00 => JoinType::RejoinType0,
                 0x02 => JoinType::RejoinType2,
                 _ => {
-                    return Err(anyhow!("invalid rejoin_type"));
+                    return Err(anyhow!("Invalid RejoinType: {}", b[0]));
                 }
             },
             netid: {

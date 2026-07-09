@@ -3,7 +3,6 @@ import { Route, Routes, useNavigate, useParams, useLocation, Link } from "react-
 
 import { format } from "date-fns";
 import { Space, Breadcrumb, Card, Button, Menu, Popconfirm, Descriptions, DescriptionsProps } from "antd";
-import { PageHeader } from "@ant-design/pro-layout";
 
 import type { Tenant } from "@chirpstack/chirpstack-api-grpc-web/api/tenant_pb";
 import type { Application } from "@chirpstack/chirpstack-api-grpc-web/api/application_pb";
@@ -17,6 +16,7 @@ import {
 import FuotaStore from "../../stores/FuotaStore";
 import DeleteConfirm from "../../components/DeleteConfirm";
 import Admin from "../../components/Admin";
+import PageHeader from "../../components/PageHeader";
 import { useTitle } from "../helpers";
 import EditFuotaDeployment from "./EditFuotaDeployment";
 import FuotaDeploymentDevices from "./FuotaDeploymentDevices";
@@ -127,45 +127,37 @@ function FuotaDeploymentLayout(props: IProps) {
   }
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size="large">
+    <Space orientation="vertical" style={{ width: "100%" }} size="large">
       <PageHeader
         breadcrumbRender={() => (
-          <Breadcrumb>
-            <Breadcrumb.Item>
-              <span>Tenants</span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${props.tenant.getId()}`}>{props.tenant.getName()}</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${props.tenant.getId()}/applications`}>Applications</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${props.tenant.getId()}/applications/${app.getId()}`}>{app.getName()}</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${props.tenant.getId()}/applications/${app.getId()}/fuota`}>FUOTA deployments</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>{d.getName()}</Breadcrumb.Item>
-          </Breadcrumb>
+          <Breadcrumb
+            items={[
+              { title: "Tenants" },
+              { title: <Link to={`/tenants/${props.tenant.getId()}`}>{props.tenant.getName()}</Link> },
+              { title: <Link to={`/tenants/${props.tenant.getId()}/applications`}>Applications</Link> },
+              {
+                title: <Link to={`/tenants/${props.tenant.getId()}/applications/${app.getId()}`}>{app.getName()}</Link>,
+              },
+              {
+                title: (
+                  <Link to={`/tenants/${props.tenant.getId()}/applications/${app.getId()}/fuota`}>
+                    FUOTA deployments
+                  </Link>
+                ),
+              },
+              { title: d.getName() },
+            ]}
+          />
         )}
         title={d.getName()}
         subTitle={`FUOTA deployment id: ${d.getId()}`}
         extra={[
-          <Admin tenantId={tenant.getId()} isDeviceAdmin>
-            <Space direction="horizontal" style={{ float: "right" }}>
+          <Admin tenantId={tenant.getId()} isDeviceAdmin key="start-delete-fuota-deployment">
+            <Space orientation="horizontal" style={{ float: "right" }}>
               <Popconfirm
                 placement="left"
                 title="Start deployment"
-                description="Are you sure you want to start the deploymen? Once started, you will not be able to make changes."
+                description="Are you sure you want to start the deployment? Once started, you will not be able to make changes."
                 onConfirm={startFuotaDeployment}
               >
                 <Button type="primary" disabled={getFuotaDeploymentResponse.getStartedAt() !== undefined}>
@@ -184,26 +176,43 @@ function FuotaDeploymentLayout(props: IProps) {
         <Descriptions items={descriptionsItems} />
       </PageHeader>
       <Card>
-        <Menu mode="horizontal" selectedKeys={[tab]} style={{ marginBottom: 24 }}>
-          <Menu.Item key="dashboard">
-            <Link to={`/tenants/${tenant.getId()}/applications/${app.getId()}/fuota/${d.getId()}`}>Dashboard</Link>
-          </Menu.Item>
-          <Menu.Item key="edit">
-            <Link to={`/tenants/${tenant.getId()}/applications/${app.getId()}/fuota/${d.getId()}/edit`}>
-              Configuration
-            </Link>
-          </Menu.Item>
-          <Menu.Item key="devices">
-            <Link to={`/tenants/${tenant.getId()}/applications/${app.getId()}/fuota/${d.getId()}/devices`}>
-              Devices
-            </Link>
-          </Menu.Item>
-          <Menu.Item key="gateways">
-            <Link to={`/tenants/${tenant.getId()}/applications/${app.getId()}/fuota/${d.getId()}/gateways`}>
-              Gateways
-            </Link>
-          </Menu.Item>
-        </Menu>
+        <Menu
+          mode="horizontal"
+          selectedKeys={[tab]}
+          style={{ marginBottom: 24 }}
+          items={[
+            {
+              key: "dashboard",
+              label: (
+                <Link to={`/tenants/${tenant.getId()}/applications/${app.getId()}/fuota/${d.getId()}`}>Dashboard</Link>
+              ),
+            },
+            {
+              key: "edit",
+              label: (
+                <Link to={`/tenants/${tenant.getId()}/applications/${app.getId()}/fuota/${d.getId()}/edit`}>
+                  Configuration
+                </Link>
+              ),
+            },
+            {
+              key: "devices",
+              label: (
+                <Link to={`/tenants/${tenant.getId()}/applications/${app.getId()}/fuota/${d.getId()}/devices`}>
+                  Devices
+                </Link>
+              ),
+            },
+            {
+              key: "gateways",
+              label: (
+                <Link to={`/tenants/${tenant.getId()}/applications/${app.getId()}/fuota/${d.getId()}/gateways`}>
+                  Gateways
+                </Link>
+              ),
+            },
+          ]}
+        />
         <Routes>
           <Route
             path="/"

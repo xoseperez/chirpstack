@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use rand::Rng;
+use rand::RngExt;
 use tracing::{Instrument, Level, span, trace};
 
 use lrwn::{EUI64, PhyPayload};
@@ -20,21 +20,20 @@ pub struct JoinAccept<'a> {
     uplink_frame_set: &'a UplinkFrameSet,
     relay_context: Option<&'a RelayContext>,
     tenant: &'a tenant::Tenant,
-    device: &'a device::Device,
+    device: &'a mut device::Device,
     join_accept: &'a PhyPayload,
     network_conf: config::RegionNetwork,
     region_conf: Arc<Box<dyn lrwn::region::Region + Sync + Send>>,
 
     downlink_frame: chirpstack_api::gw::DownlinkFrame,
-    device_gateway_rx_info: Option<chirpstack_api::internal::DeviceGatewayRxInfo>,
-    downlink_gateway: Option<chirpstack_api::internal::DeviceGatewayRxInfoItem>,
+    downlink_gateway: Option<internal::DownlinkGateway>,
 }
 
 impl JoinAccept<'_> {
     pub async fn handle(
         ufs: &UplinkFrameSet,
         tenant: &tenant::Tenant,
-        device: &device::Device,
+        device: &mut device::Device,
         join_accept: &PhyPayload,
     ) -> Result<()> {
         let downlink_id: u32 = rand::rng().random();
@@ -48,7 +47,7 @@ impl JoinAccept<'_> {
         relay_ctx: &RelayContext,
         ufs: &UplinkFrameSet,
         tenant: &tenant::Tenant,
-        device: &device::Device,
+        device: &mut device::Device,
         join_accept: &PhyPayload,
     ) -> Result<()> {
         let downlink_id: u32 = rand::rng().random();
@@ -67,7 +66,7 @@ impl JoinAccept<'_> {
         downlink_id: u32,
         ufs: &UplinkFrameSet,
         tenant: &tenant::Tenant,
-        device: &device::Device,
+        device: &mut device::Device,
         join_accept: &PhyPayload,
     ) -> Result<()> {
         let mut ctx = JoinAccept {
@@ -83,7 +82,6 @@ impl JoinAccept<'_> {
                 downlink_id,
                 ..Default::default()
             },
-            device_gateway_rx_info: None,
             downlink_gateway: None,
         };
 
@@ -102,7 +100,7 @@ impl JoinAccept<'_> {
         relay_ctx: &RelayContext,
         ufs: &UplinkFrameSet,
         tenant: &tenant::Tenant,
-        device: &device::Device,
+        device: &mut device::Device,
         join_accept: &PhyPayload,
     ) -> Result<()> {
         let mut ctx = JoinAccept {
@@ -118,7 +116,6 @@ impl JoinAccept<'_> {
                 downlink_id,
                 ..Default::default()
             },
-            device_gateway_rx_info: None,
             downlink_gateway: None,
         };
 
@@ -134,9 +131,9 @@ impl JoinAccept<'_> {
 
     fn set_device_gateway_rx_info(&mut self) -> Result<()> {
         trace!("Set device-gateway rx-info");
+        let ds = self.device.get_device_session_mut()?;
 
-        self.device_gateway_rx_info = Some(internal::DeviceGatewayRxInfo {
-            dev_eui: self.device.dev_eui.to_be_bytes().to_vec(),
+        let history = internal::GatewayRxInfoHistory {
             dr: self.uplink_frame_set.dr as u32,
             items: self
                 .uplink_frame_set
@@ -145,7 +142,7 @@ impl JoinAccept<'_> {
                 .map(|rx_info| {
                     let gw_id = EUI64::from_str(&rx_info.gateway_id).unwrap_or_default();
 
-                    internal::DeviceGatewayRxInfoItem {
+                    internal::GatewayRxInfoHistoryItem {
                         gateway_id: gw_id.to_vec(),
                         rssi: rx_info.rssi,
                         lora_snr: rx_info.snr,
@@ -170,22 +167,34 @@ impl JoinAccept<'_> {
                             .get(&gw_id)
                             .map(|v| v.into_bytes().to_vec())
                             .unwrap_or_default(),
+                        gateway_downlink_priority: self
+                            .uplink_frame_set
+                            .gateway_downlink_priority_map
+                            .get(&gw_id)
+                            .cloned()
+                            .unwrap_or_default(),
                     }
                 })
                 .collect(),
-        });
+        };
+        ds.append_gateway_rx_info_history(
+            history,
+            config::get().gateway.device_gateway_mapping_history_uplinks,
+        );
 
         Ok(())
     }
 
     fn select_downlink_gateway(&mut self) -> Result<()> {
         trace!("Select downlink gateway");
+        let ds = self.device.device_session.as_ref().unwrap();
 
         let gw_down = helpers::select_downlink_gateway(
             Some(self.tenant.id.into()),
             &self.uplink_frame_set.region_config_id,
             self.network_conf.gateway_prefer_min_margin,
-            self.device_gateway_rx_info.as_mut().unwrap(),
+            &ds.gateway_rx_info_history,
+            true,
         )?;
 
         self.downlink_frame.gateway_id = hex::encode(&gw_down.gateway_id);
@@ -269,7 +278,7 @@ impl JoinAccept<'_> {
         let rx1_dr_index = self
             .region_conf
             .get_rx1_data_rate_index(self.uplink_frame_set.dr, 0)?;
-        let rx1_dr = self.region_conf.get_data_rate(rx1_dr_index)?;
+        let rx1_dr = self.region_conf.get_data_rate(false, rx1_dr_index)?;
 
         // set DR to tx_info.
         helpers::set_tx_info_data_rate(&mut tx_info, &rx1_dr)?;
@@ -329,7 +338,7 @@ impl JoinAccept<'_> {
         let rx1_dr_index = self
             .region_conf
             .get_rx1_data_rate_index(self.uplink_frame_set.dr, rx1_dr_offset)?;
-        let rx1_dr = self.region_conf.get_data_rate(rx1_dr_index)?;
+        let rx1_dr = self.region_conf.get_data_rate(false, rx1_dr_index)?;
 
         // set DR to tx_info.
         helpers::set_tx_info_data_rate(&mut tx_info, &rx1_dr)?;
@@ -388,7 +397,7 @@ impl JoinAccept<'_> {
 
         // get RX2 DR
         let rx2_dr_index = self.region_conf.get_defaults().rx2_dr;
-        let rx2_dr = self.region_conf.get_data_rate(rx2_dr_index)?;
+        let rx2_dr = self.region_conf.get_data_rate(false, rx2_dr_index)?;
 
         // set DR to tx_info
         helpers::set_tx_info_data_rate(&mut tx_info, &rx2_dr)?;
@@ -442,7 +451,7 @@ impl JoinAccept<'_> {
 
         // get RX2 DR
         let rx2_dr_index = relay_ds.rx2_dr as u8;
-        let rx2_dr = self.region_conf.get_data_rate(rx2_dr_index)?;
+        let rx2_dr = self.region_conf.get_data_rate(false, rx2_dr_index)?;
 
         // set DR to tx_info
         helpers::set_tx_info_data_rate(&mut tx_info, &rx2_dr)?;
@@ -638,45 +647,45 @@ impl JoinAccept<'_> {
             .region_conf
             .get_rx1_data_rate_index(self.uplink_frame_set.dr, ds.rx1_dr_offset as usize)?;
 
-        let rx1_dr = self.region_conf.get_data_rate(dr_rx1_index)?;
-        let rx2_dr = self.region_conf.get_data_rate(ds.rx2_dr as u8)?;
+        let rx1_dr = self.region_conf.get_data_rate(false, dr_rx1_index)?;
+        let rx2_dr = self.region_conf.get_data_rate(false, ds.rx2_dr as u8)?;
 
         // the calculation below only applies for LORA modulation
-        if let lrwn::region::DataRateModulation::Lora(rx1_dr) = rx1_dr {
-            if let lrwn::region::DataRateModulation::Lora(rx2_dr) = rx2_dr {
-                let tx_power_rx1 = if self.network_conf.downlink_tx_power != -1 {
-                    self.network_conf.downlink_tx_power
-                } else {
-                    self.region_conf.get_downlink_tx_power_eirp(
-                        self.region_conf.get_rx1_frequency_for_uplink_frequency(
-                            self.uplink_frame_set.tx_info.frequency,
-                        )?,
-                    ) as i32
-                };
+        if let lrwn::region::DataRateModulation::Lora(rx1_dr) = rx1_dr
+            && let lrwn::region::DataRateModulation::Lora(rx2_dr) = rx2_dr
+        {
+            let tx_power_rx1 = if self.network_conf.downlink_tx_power != -1 {
+                self.network_conf.downlink_tx_power
+            } else {
+                self.region_conf.get_downlink_tx_power_eirp(
+                    self.region_conf.get_rx1_frequency_for_uplink_frequency(
+                        self.uplink_frame_set.tx_info.frequency,
+                    )?,
+                ) as i32
+            };
 
-                let tx_power_rx2 = if self.network_conf.downlink_tx_power != -1 {
-                    self.network_conf.downlink_tx_power
-                } else {
-                    self.region_conf
-                        .get_downlink_tx_power_eirp(ds.rx2_frequency) as i32
-                };
+            let tx_power_rx2 = if self.network_conf.downlink_tx_power != -1 {
+                self.network_conf.downlink_tx_power
+            } else {
+                self.region_conf
+                    .get_downlink_tx_power_eirp(ds.rx2_frequency) as i32
+            };
 
-                let link_budget_rx1 = sensitivity::calculate_link_budget(
-                    rx1_dr.bandwidth,
-                    6.0,
-                    config::get_required_snr_for_sf(rx1_dr.spreading_factor)?,
-                    tx_power_rx1 as f32,
-                );
+            let link_budget_rx1 = sensitivity::calculate_link_budget(
+                rx1_dr.bandwidth,
+                6.0,
+                config::get_required_snr_for_sf(rx1_dr.spreading_factor)?,
+                tx_power_rx1 as f32,
+            );
 
-                let link_budget_rx2 = sensitivity::calculate_link_budget(
-                    rx2_dr.bandwidth,
-                    6.0,
-                    config::get_required_snr_for_sf(rx2_dr.spreading_factor)?,
-                    tx_power_rx2 as f32,
-                );
+            let link_budget_rx2 = sensitivity::calculate_link_budget(
+                rx2_dr.bandwidth,
+                6.0,
+                config::get_required_snr_for_sf(rx2_dr.spreading_factor)?,
+                tx_power_rx2 as f32,
+            );
 
-                return Ok(link_budget_rx2 > link_budget_rx1);
-            }
+            return Ok(link_budget_rx2 > link_budget_rx1);
         }
 
         Ok(false)

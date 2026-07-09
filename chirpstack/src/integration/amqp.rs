@@ -63,13 +63,11 @@ impl<'a> Integration<'a> {
         let mut conn_w = CONNECTION.write().await;
         let mut chan_w = CHANNEL.write().await;
 
-        let options = ConnectionProperties::default()
-            // Use tokio executor and reactor.
-            // At the moment the reactor is only available for unix.
-            .with_executor(tokio_executor_trait::Tokio::current())
-            .with_reactor(tokio_reactor_trait::Tokio::current());
+        let runtime = lapin::runtime::default_runtime()?;
 
-        let conn = Connection::connect(&self.url, options).await?;
+        let conn =
+            Connection::connect_with_runtime(&self.url, ConnectionProperties::default(), runtime)
+                .await?;
         let chan = conn.create_channel().await?;
 
         *conn_w = Some(conn);
@@ -92,8 +90,8 @@ impl<'a> Integration<'a> {
                 .as_ref()
                 .unwrap()
                 .basic_publish(
-                    &self.exchange,
-                    &routing_key,
+                    self.exchange.clone().into(),
+                    routing_key.clone().into(),
                     BasicPublishOptions::default(),
                     b,
                     BasicProperties::default().with_content_type(match self.json {
@@ -256,11 +254,11 @@ pub mod test {
         let i = Integration::new(&conf).await.unwrap();
 
         let conn = loop {
-            match Connection::connect(
+            let runtime = lapin::runtime::default_runtime().unwrap();
+            match Connection::connect_with_runtime(
                 &conf.url,
-                ConnectionProperties::default()
-                    .with_executor(tokio_executor_trait::Tokio::current())
-                    .with_reactor(tokio_reactor_trait::Tokio::current()),
+                ConnectionProperties::default(),
+                runtime,
             )
             .await
             {
@@ -277,7 +275,7 @@ pub mod test {
         let chan = conn.create_channel().await.unwrap();
         let _queue = chan
             .queue_declare(
-                "test-queue",
+                "test-queue".into(),
                 QueueDeclareOptions::default(),
                 FieldTable::default(),
             )
@@ -285,9 +283,9 @@ pub mod test {
             .unwrap();
 
         chan.queue_bind(
-            "test-queue",
-            "amq.topic",
-            "*.*.*.*.*.*",
+            "test-queue".into(),
+            "amq.topic".into(),
+            "*.*.*.*.*.*".into(),
             QueueBindOptions::default(),
             FieldTable::default(),
         )
@@ -296,8 +294,8 @@ pub mod test {
 
         let mut consumer = chan
             .basic_consume(
-                "test-queue",
-                "test-consumer",
+                "test-queue".into(),
+                "test-consumer".into(),
                 BasicConsumeOptions::default(),
                 FieldTable::default(),
             )

@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 
 import { DeleteOutlined } from "@ant-design/icons";
 import { Space, Breadcrumb, Button } from "antd";
-import { PageHeader } from "@ant-design/pro-layout";
 import type { ColumnsType } from "antd/es/table";
 
 import type { ListApiKeysResponse, ApiKey } from "@chirpstack/chirpstack-api-grpc-web/api/internal_pb";
@@ -14,6 +13,7 @@ import type { GetPageCallbackFunc } from "../../components/DataTable";
 import DataTable from "../../components/DataTable";
 import InternalStore from "../../stores/InternalStore";
 import DeleteConfirm from "../../components/DeleteConfirm";
+import PageHeader from "../../components/PageHeader";
 import Admin from "../../components/Admin";
 import { useTitle } from "../helpers";
 
@@ -36,6 +36,19 @@ function ListTenantApiKeys(props: IProps) {
       title: "Name",
       dataIndex: "name",
       key: "name",
+    },
+    {
+      title: "Read only",
+      dataIndex: "isReadOnly",
+      key: "isReadOnly",
+      width: 150,
+      render: (_, record) => {
+        if (record.isReadOnly) {
+          return "yes";
+        } else {
+          return "no";
+        }
+      },
     },
     {
       title: "Action",
@@ -84,26 +97,20 @@ function ListTenantApiKeys(props: IProps) {
   };
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size="large">
+    <Space orientation="vertical" style={{ width: "100%" }} size="large">
       <PageHeader
         breadcrumbRender={() => (
-          <Breadcrumb>
-            <Breadcrumb.Item>
-              <span>Tenants</span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${props.tenant.getId()}`}>{props.tenant.getName()}</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>API Keys</span>
-            </Breadcrumb.Item>
-          </Breadcrumb>
+          <Breadcrumb
+            items={[
+              { title: "Tenants" },
+              { title: <Link to={`/tenants/${props.tenant.getId()}`}>{props.tenant.getName()}</Link> },
+              { title: "API Keys" },
+            ]}
+          />
         )}
         title="API keys"
         extra={[
-          <Admin tenantId={props.tenant.getId()} isTenantAdmin>
+          <Admin tenantId={props.tenant.getId()} isTenantAdmin key="add-api-key">
             <Button type="primary">
               <Link to={`/tenants/${props.tenant.getId()}/api-keys/create`}>Add API key</Link>
             </Button>

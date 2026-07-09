@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { format } from "date-fns";
 import { Space, Button, Dropdown, Menu, Modal, Select, Tag, Popover, Typography } from "antd";
+import type { SelectProps } from "antd/lib";
 import type { ColumnsType } from "antd/es/table";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -53,6 +54,7 @@ import MulticastGroupStore from "../../stores/MulticastGroupStore";
 import FuotaStore from "../../stores/FuotaStore";
 import RelayStore from "../../stores/RelayStore";
 import Admin from "../../components/Admin";
+import { MenuProps } from "antd/lib";
 
 interface IProps {
   application: Application;
@@ -170,7 +172,7 @@ function ListDevices(props: IProps) {
       render: (text, record) => (
         <>
           {text.map((v: string[]) => (
-            <Popover content={v[1]}>
+            <Popover content={v[1]} key={v[0]}>
               <Tag>{v[0]}</Tag>
             </Popover>
           ))}
@@ -185,6 +187,7 @@ function ListDevices(props: IProps) {
             return {
               text: vv,
               value: `${v.getKey()}=${vv}`,
+              key: v.getKey(),
             };
           }),
         };
@@ -265,8 +268,6 @@ function ListDevices(props: IProps) {
       }
     }
 
-    console.log(req.toObject());
-
     DeviceStore.list(req, (resp: ListDevicesResponse) => {
       const obj = resp.toObject();
       callbackFunc(obj.totalCount, obj.resultList);
@@ -334,20 +335,26 @@ function ListDevices(props: IProps) {
     setFuotaModalVisible(false);
   };
 
-  const menu = (
-    <Menu>
-      <Menu.Item onClick={showMgModal}>Add to multicast-group</Menu.Item>
-      <Menu.Item onClick={() => setFuotaModalVisible(true)}>Add to FUOTA deployment</Menu.Item>
-      <Menu.Item onClick={showRelayModal}>Add to relay</Menu.Item>
-    </Menu>
-  );
+  const menu: MenuProps = {
+    items: [
+      { key: "1", label: "Add to multicast group", onClick: showMgModal },
+      { key: "2", label: "Add to FUOTA deployment", onClick: () => setFuotaModalVisible(true) },
+      { key: "3", label: "Add to relay", onClick: showRelayModal },
+    ],
+  };
 
-  const mgOptions = multicastGroups.map(mg => <Select.Option value={mg.getId()}>{mg.getName()}</Select.Option>);
-  const relayOptions = relays.map(r => <Select.Option value={r.getDevEui()}>{r.getName()}</Select.Option>);
-  const fuotaOptions = fuotaDeployments.map(r => <Select.Option value={r.getId()}>{r.getName()}</Select.Option>);
+  const mgOptions: SelectProps["options"] = multicastGroups.map(mg => {
+    return { value: mg.getId(), label: mg.getName() };
+  });
+  const relayOptions: SelectProps["options"] = relays.map(r => {
+    return { value: r.getDevEui(), label: r.getName() };
+  });
+  const fuotaOptions: SelectProps["options"] = fuotaDeployments.map(r => {
+    return { value: r.getId(), label: r.getName() };
+  });
 
   return (
-    <Space direction="vertical" size="large" style={{ width: "100%" }}>
+    <Space orientation="vertical" size="large" style={{ width: "100%" }}>
       <Modal
         title="Add selected devices to multicast-group"
         open={mgModalVisible}
@@ -355,10 +362,13 @@ function ListDevices(props: IProps) {
         onCancel={hideMgModal}
         okButtonProps={{ disabled: mgSelected === "" }}
       >
-        <Space direction="vertical" size="large" style={{ width: "100%" }}>
-          <Select style={{ width: "100%" }} onChange={onMgSelected} placeholder="Select Multicast-group">
-            {mgOptions}
-          </Select>
+        <Space orientation="vertical" size="large" style={{ width: "100%" }}>
+          <Select
+            style={{ width: "100%" }}
+            onChange={onMgSelected}
+            placeholder="Select Multicast-group"
+            options={mgOptions}
+          />
         </Space>
       </Modal>
       <Modal
@@ -368,7 +378,7 @@ function ListDevices(props: IProps) {
         onCancel={() => setFuotaModalVisible(false)}
         okButtonProps={{ disabled: fuotaDeploymentSelected === "" }}
       >
-        <Space direction="vertical" size="large" style={{ width: "100%" }}>
+        <Space orientation="vertical" size="large" style={{ width: "100%" }}>
           <Typography.Text>
             This will add the selected devices to a FUOTA deployment. Devices must have the same device-profile as
             associated with the FUOTA deployment.
@@ -377,9 +387,8 @@ function ListDevices(props: IProps) {
             style={{ width: "100%" }}
             onChange={v => setFuotaDeploymentSelected(v)}
             placeholder="Select FUOTA deployment"
-          >
-            {fuotaOptions}
-          </Select>
+            options={fuotaOptions}
+          />
         </Space>
       </Modal>
       <Modal
@@ -389,14 +398,17 @@ function ListDevices(props: IProps) {
         onCancel={hideRelayModal}
         okButtonProps={{ disabled: relaySelected === "" }}
       >
-        <Space direction="vertical" size="large" style={{ width: "100%" }}>
-          <Select style={{ width: "100%" }} onChange={onRelaySelected} placeholder="Select Relay">
-            {relayOptions}
-          </Select>
+        <Space orientation="vertical" size="large" style={{ width: "100%" }}>
+          <Select
+            style={{ width: "100%" }}
+            onChange={onRelaySelected}
+            placeholder="Select Relay"
+            options={relayOptions}
+          />
         </Space>
       </Modal>
       <Admin tenantId={props.application.getTenantId()} isDeviceAdmin>
-        <Space direction="horizontal" style={{ float: "right" }}>
+        <Space orientation="horizontal" style={{ float: "right" }}>
           <Button type="primary">
             <Link
               to={`/tenants/${props.application.getTenantId()}/applications/${props.application.getId()}/devices/create`}
@@ -404,7 +416,7 @@ function ListDevices(props: IProps) {
               Add device
             </Link>
           </Button>
-          <Dropdown placement="bottomRight" overlay={menu} trigger={["click"]} disabled={selectedRowIds.length === 0}>
+          <Dropdown placement="bottomRight" menu={menu} trigger={["click"]} disabled={selectedRowIds.length === 0}>
             <Button>Selected devices</Button>
           </Dropdown>
         </Space>

@@ -3,33 +3,32 @@ use std::io::{Cursor, Read};
 
 use anyhow::{Context, Result};
 
-const LPP_DIGITAL_INPUT: u8 = 0;
-const LPP_DIGITAL_OUTPUT: u8 = 1;
-const LPP_ANALOG_INPUT: u8 = 2;
-const LPP_ANALOG_OUTPUT: u8 = 3;
-const LPP_ILLUMINANCE_SENSOR: u8 = 101;
-const LPP_PRESENCE_SENSOR: u8 = 102;
-const LPP_TEMPERATURE_SENSOR: u8 = 103;
-const LPP_HUMIDITY_SENSOR: u8 = 104;
-const LPP_ACCELEROMETER: u8 = 113;
-const LPP_BAROMETER: u8 = 115;
-const LPP_DISTANCE: u8 = 130;
-const LPP_GYROMETER: u8 = 134;
-const LPP_GPS_LOCATION: u8 = 136;
-
-const LPP_TIME: u8 = 133;
-const LPP_GENERIC_SENSOR: u8 = 100;
-const LPP_VOLTAGE: u8 = 116;
-const LPP_CURRENT: u8 = 117;
-const LPP_FREQUENCY: u8 = 118;
-const LPP_PERCENTAGE: u8 = 120;
-const LPP_ALTITUDE: u8 = 121;
-const LPP_CONCENTRATION: u8 = 125;
-const LPP_POWER: u8 = 128;
-const LPP_ENERGY: u8 = 131;
-const LPP_DIRECTION: u8 = 132;
-const LPP_COLOUR: u8 = 135;
-const LPP_SWITCH: u8 = 142;
+const LPP_DIGITAL_INPUT: u8 = 0; // 1 byte
+const LPP_DIGITAL_OUTPUT: u8 = 1; // 1 byte
+const LPP_ANALOG_INPUT: u8 = 2; // 2 bytes, 0.01 signed
+const LPP_ANALOG_OUTPUT: u8 = 3; // 2 bytes, 0.01 signed
+const LPP_GENERIC_SENSOR: u8 = 100; // 4 bytes, unsigned
+const LPP_ILLUMINANCE_SENSOR: u8 = 101; // 2 bytes, 1 lux unsigned
+const LPP_PRESENCE_SENSOR: u8 = 102; // 1 byte, bool
+const LPP_TEMPERATURE_SENSOR: u8 = 103; // 2 bytes, 0.1°C signed
+const LPP_HUMIDITY_SENSOR: u8 = 104; // 1 byte, 0.5% unsigned
+const LPP_ACCELEROMETER: u8 = 113; // 2 bytes per axis, 0.001G
+const LPP_BAROMETER: u8 = 115; // 2 bytes 0.1hPa unsigned
+const LPP_VOLTAGE: u8 = 116; // 2 bytes 0.01V unsigned
+const LPP_CURRENT: u8 = 117; // 2 bytes 0.001A unsigned
+const LPP_FREQUENCY: u8 = 118; // 4 bytes 1Hz unsigned
+const LPP_PERCENTAGE: u8 = 120; // 1 byte 1-100% unsigned
+const LPP_ALTITUDE: u8 = 121; // 2 byte 1m signed
+const LPP_CONCENTRATION: u8 = 125; // 2 bytes, 1 ppm unsigned
+const LPP_POWER: u8 = 128; // 2 byte, 1W, unsigned
+const LPP_DISTANCE: u8 = 130; // 4 byte, 0.001m, unsigned
+const LPP_ENERGY: u8 = 131; // 4 byte, 0.001kWh, unsigned
+const LPP_DIRECTION: u8 = 132; // 2 bytes, 1deg, unsigned
+const LPP_UNIX_TIME: u8 = 133; // 4 bytes, unsigned
+const LPP_GYROMETER: u8 = 134; // 2 bytes per axis, 0.01 °/s
+const LPP_COLOR: u8 = 135; // 1 byte per RGB Color
+const LPP_GPS_LOCATION: u8 = 136; // 3 byte lon/lat 0.0001 °, 3 bytes alt 0.01 meter
+const LPP_SWITCH: u8 = 142; // 1 byte, 0/1
 
 pub fn decode(b: &[u8]) -> Result<pbjson_types::Struct> {
     let lpp = CayenneLpp::from_slice(b).context("Decode Cayenne LPP payload")?;
@@ -59,7 +58,7 @@ struct GpsLocation {
     altitude: f64,
 }
 
-struct Colour {
+struct Color {
     r: u8,
     g: u8,
     b: u8,
@@ -71,27 +70,27 @@ struct CayenneLpp {
     digital_output: BTreeMap<u8, u8>,
     analog_input: BTreeMap<u8, f64>,
     analog_output: BTreeMap<u8, f64>,
+    generic_sensor: BTreeMap<u8, u32>,
     illuminance_sensor: BTreeMap<u8, u16>,
     presence_sensor: BTreeMap<u8, u8>,
     temperature_sensor: BTreeMap<u8, f64>,
     humidity_sensor: BTreeMap<u8, f64>,
     accelerometer: BTreeMap<u8, Accelerometer>,
     barometer: BTreeMap<u8, f64>,
-    distance: BTreeMap<u8, f64>,
-    gyrometer: BTreeMap<u8, Gyrometer>,
-    gps_location: BTreeMap<u8, GpsLocation>,
-    time: BTreeMap<u8, u32>,
-    generic_sensor: BTreeMap<u8, u32>,
     voltage: BTreeMap<u8, f64>,
     current: BTreeMap<u8, f64>,
     frequency: BTreeMap<u8, u32>,
     percentage: BTreeMap<u8, u8>,
-    altitude: BTreeMap<u8, u16>,
+    altitude: BTreeMap<u8, i16>,
     concentration: BTreeMap<u8, u16>,
     power: BTreeMap<u8, u16>,
+    distance: BTreeMap<u8, f64>,
     energy: BTreeMap<u8, f64>,
-    colour: BTreeMap<u8, Colour>,
     direction: BTreeMap<u8, u16>,
+    unix_time: BTreeMap<u8, u32>,
+    gyrometer: BTreeMap<u8, Gyrometer>,
+    color: BTreeMap<u8, Color>,
+    gps_location: BTreeMap<u8, GpsLocation>,
     switch: BTreeMap<u8, u8>,
 }
 
@@ -111,17 +110,13 @@ impl CayenneLpp {
                 LPP_DIGITAL_OUTPUT => lpp.set_digital_output(buf[0], &mut cur)?,
                 LPP_ANALOG_INPUT => lpp.set_analog_input(buf[0], &mut cur)?,
                 LPP_ANALOG_OUTPUT => lpp.set_analog_output(buf[0], &mut cur)?,
+                LPP_GENERIC_SENSOR => lpp.set_generic_sensor(buf[0], &mut cur)?,
                 LPP_ILLUMINANCE_SENSOR => lpp.set_illuminance_sensor(buf[0], &mut cur)?,
                 LPP_PRESENCE_SENSOR => lpp.set_presence_sensor(buf[0], &mut cur)?,
                 LPP_TEMPERATURE_SENSOR => lpp.set_temperature_sensor(buf[0], &mut cur)?,
                 LPP_HUMIDITY_SENSOR => lpp.set_humidity_sensor(buf[0], &mut cur)?,
                 LPP_ACCELEROMETER => lpp.set_accelerometer(buf[0], &mut cur)?,
                 LPP_BAROMETER => lpp.set_barometer(buf[0], &mut cur)?,
-                LPP_DISTANCE => lpp.set_distance(buf[0], &mut cur)?,
-                LPP_GYROMETER => lpp.set_gyrometer(buf[0], &mut cur)?,
-                LPP_GPS_LOCATION => lpp.set_gps_location(buf[0], &mut cur)?,
-                LPP_TIME => lpp.set_time(buf[0], &mut cur)?,
-                LPP_GENERIC_SENSOR => lpp.set_generic_sensor(buf[0], &mut cur)?,
                 LPP_VOLTAGE => lpp.set_voltage(buf[0], &mut cur)?,
                 LPP_CURRENT => lpp.set_current(buf[0], &mut cur)?,
                 LPP_FREQUENCY => lpp.set_frequency(buf[0], &mut cur)?,
@@ -129,9 +124,13 @@ impl CayenneLpp {
                 LPP_ALTITUDE => lpp.set_altitude(buf[0], &mut cur)?,
                 LPP_CONCENTRATION => lpp.set_concentration(buf[0], &mut cur)?,
                 LPP_POWER => lpp.set_power(buf[0], &mut cur)?,
+                LPP_DISTANCE => lpp.set_distance(buf[0], &mut cur)?,
                 LPP_ENERGY => lpp.set_energy(buf[0], &mut cur)?,
                 LPP_DIRECTION => lpp.set_direction(buf[0], &mut cur)?,
-                LPP_COLOUR => lpp.set_colour(buf[0], &mut cur)?,
+                LPP_UNIX_TIME => lpp.set_unix_time(buf[0], &mut cur)?,
+                LPP_GYROMETER => lpp.set_gyrometer(buf[0], &mut cur)?,
+                LPP_COLOR => lpp.set_color(buf[0], &mut cur)?,
+                LPP_GPS_LOCATION => lpp.set_gps_location(buf[0], &mut cur)?,
                 LPP_SWITCH => lpp.set_switch(buf[0], &mut cur)?,
                 _ => {
                     return Err(anyhow!("Invalid data type: {}", buf[1]));
@@ -157,6 +156,9 @@ impl CayenneLpp {
                 "analogOutput" => lpp
                     .set_analog_output_from_value(v)
                     .context("analogOutput")?,
+                "genericSensor" => lpp
+                    .set_generic_sensor_from_value(v)
+                    .context("genericSensor")?,
                 "illuminanceSensor" => lpp
                     .set_illuminance_sensor_from_value(v)
                     .context("illuminanceSensor")?,
@@ -173,13 +175,6 @@ impl CayenneLpp {
                     .set_accelerometer_from_value(v)
                     .context("accelerometer")?,
                 "barometer" => lpp.set_barometer_from_value(v).context("barometer")?,
-                "distance" => lpp.set_distance_from_value(v).context("distance")?,
-                "gyrometer" => lpp.set_gyrometer_from_value(v).context("gyrometer")?,
-                "gpsLocation" => lpp.set_gps_location_from_value(v).context("gpsLocation")?,
-                "time" => lpp.set_time_from_value(v).context("time")?,
-                "genericSensor" => lpp
-                    .set_generic_sensor_from_value(v)
-                    .context("genericSensor")?,
                 "voltage" => lpp.set_voltage_from_value(v).context("voltage")?,
                 "current" => lpp.set_current_from_value(v).context("current")?,
                 "frequency" => lpp.set_frequency_from_value(v).context("frequency")?,
@@ -189,9 +184,13 @@ impl CayenneLpp {
                     .set_concentration_from_value(v)
                     .context("concentration")?,
                 "power" => lpp.set_power_from_value(v).context("power")?,
+                "distance" => lpp.set_distance_from_value(v).context("distance")?,
                 "energy" => lpp.set_energy_from_value(v).context("energy")?,
-                "colour" => lpp.set_colour_from_value(v).context("colour")?,
                 "direction" => lpp.set_direction_from_value(v).context("direction")?,
+                "unix_time" => lpp.set_unix_time_from_value(v).context("unix_time")?,
+                "gyrometer" => lpp.set_gyrometer_from_value(v).context("gyrometer")?,
+                "color" => lpp.set_color_from_value(v).context("color")?,
+                "gpsLocation" => lpp.set_gps_location_from_value(v).context("gpsLocation")?,
                 "switch" => lpp.set_switch_from_value(v).context("switch")?,
                 _ => {
                     return Err(anyhow!("Unexpected key '{}' in payload", k));
@@ -230,6 +229,14 @@ impl CayenneLpp {
             out.extend([*k, LPP_ANALOG_OUTPUT]);
 
             let val = (*v * 100.0) as i16;
+            out.extend(val.to_be_bytes());
+        }
+
+        // generic sensor
+        for (k, v) in &self.generic_sensor {
+            out.extend([*k, LPP_GENERIC_SENSOR]);
+
+            let val = *v;
             out.extend(val.to_be_bytes());
         }
 
@@ -281,51 +288,6 @@ impl CayenneLpp {
             out.extend(val.to_be_bytes());
         }
 
-        // distance
-        for (k, v) in &self.distance {
-            out.extend([*k, LPP_DISTANCE]);
-
-            let val = (*v * 1000.0) as u32;
-            out.extend(val.to_be_bytes());
-        }
-
-        // gyrometer
-        for (k, v) in &self.gyrometer {
-            out.extend([*k, LPP_GYROMETER]);
-
-            let x = (v.x * 100.0) as i16;
-            let y = (v.y * 100.0) as i16;
-            let z = (v.z * 100.0) as i16;
-            out.extend(x.to_be_bytes());
-            out.extend(y.to_be_bytes());
-            out.extend(z.to_be_bytes());
-        }
-
-        // gps location
-        for (k, v) in &self.gps_location {
-            out.extend([*k, LPP_GPS_LOCATION]);
-
-            let lat = (v.latitude * 10000.0) as i32;
-            let lon = (v.longitude * 10000.0) as i32;
-            let alt = (v.altitude * 100.0) as i32;
-
-            out.extend(&lat.to_be_bytes()[1..]);
-            out.extend(&lon.to_be_bytes()[1..]);
-            out.extend(&alt.to_be_bytes()[1..]);
-        }
-
-        // time
-        for (k, v) in &self.time {
-            out.extend([*k, LPP_TIME]);
-            out.extend(v.to_be_bytes());
-        }
-
-        // generic sensor
-        for (k, v) in &self.generic_sensor {
-            out.extend([*k, LPP_GENERIC_SENSOR]);
-            out.extend(v.to_be_bytes());
-        }
-
         // voltage
         for (k, v) in &self.voltage {
             out.extend([*k, LPP_VOLTAGE]);
@@ -345,31 +307,49 @@ impl CayenneLpp {
         // frequency
         for (k, v) in &self.frequency {
             out.extend([*k, LPP_FREQUENCY]);
-            out.extend(v.to_be_bytes());
+
+            let val = *v;
+            out.extend(val.to_be_bytes());
         }
 
-        // frequency
+        // percentage
         for (k, v) in &self.percentage {
             out.extend([*k, LPP_PERCENTAGE]);
-            out.extend(v.to_be_bytes());
+
+            let val = *v;
+            out.push(val);
         }
 
         // altitude
         for (k, v) in &self.altitude {
             out.extend([*k, LPP_ALTITUDE]);
-            out.extend(v.to_be_bytes());
+
+            let val = *v;
+            out.extend(val.to_be_bytes());
         }
 
-        // altitude
+        // concentration
         for (k, v) in &self.concentration {
             out.extend([*k, LPP_CONCENTRATION]);
-            out.extend(v.to_be_bytes());
+
+            let val = *v;
+            out.extend(val.to_be_bytes());
         }
 
         // power
         for (k, v) in &self.power {
             out.extend([*k, LPP_POWER]);
-            out.extend(v.to_be_bytes());
+
+            let val = *v;
+            out.extend(val.to_be_bytes());
+        }
+
+        // distance
+        for (k, v) in &self.distance {
+            out.extend([*k, LPP_DISTANCE]);
+
+            let val = (*v * 1000.0) as u32;
+            out.extend(val.to_be_bytes());
         }
 
         // energy
@@ -380,31 +360,64 @@ impl CayenneLpp {
             out.extend(val.to_be_bytes());
         }
 
-        // colour
-        for (k, v) in &self.colour {
-            out.extend([*k, LPP_COLOUR]);
+        // direction
+        for (k, v) in &self.direction {
+            out.extend([*k, LPP_DIRECTION]);
+
+            let val = *v;
+            out.extend(val.to_be_bytes());
+        }
+
+        // unix_time
+        for (k, v) in &self.unix_time {
+            out.extend([*k, LPP_UNIX_TIME]);
+
+            let val = *v;
+            out.extend(val.to_be_bytes());
+        }
+
+        // gyrometer
+        for (k, v) in &self.gyrometer {
+            out.extend([*k, LPP_GYROMETER]);
+
+            let x = (v.x * 100.0) as i16;
+            let y = (v.y * 100.0) as i16;
+            let z = (v.z * 100.0) as i16;
+            out.extend(x.to_be_bytes());
+            out.extend(y.to_be_bytes());
+            out.extend(z.to_be_bytes());
+        }
+
+        // color
+        for (k, v) in &self.color {
+            out.extend([*k, LPP_COLOR]);
 
             let r = v.r;
             let g = v.g;
             let b = v.b;
-
-            out.extend(&r.to_be_bytes());
-            out.extend(&g.to_be_bytes());
-            out.extend(&b.to_be_bytes());
+            out.push(r);
+            out.push(g);
+            out.push(b);
         }
 
-        // direction
-        for (k, v) in &self.direction {
-            out.extend([*k, LPP_DIRECTION]);
-            out.extend(v.to_be_bytes());
+        // gps location
+        for (k, v) in &self.gps_location {
+            out.extend([*k, LPP_GPS_LOCATION]);
+
+            let lat = (v.latitude * 10000.0) as i32;
+            let lon = (v.longitude * 10000.0) as i32;
+            let alt = (v.altitude * 100.0) as i32;
+
+            out.extend(&lat.to_be_bytes()[1..]);
+            out.extend(&lon.to_be_bytes()[1..]);
+            out.extend(&alt.to_be_bytes()[1..]);
         }
 
         // switch
         for (k, v) in &self.switch {
             out.extend([*k, LPP_SWITCH]);
-            out.extend(v.to_be_bytes());
+            out.push(*v);
         }
-
         out
     }
 
@@ -477,6 +490,24 @@ impl CayenneLpp {
             }
             out.fields.insert(
                 "analogOutput".to_string(),
+                pbjson_types::Value {
+                    kind: Some(pbjson_types::value::Kind::StructValue(val)),
+                },
+            );
+        }
+
+        if !self.generic_sensor.is_empty() {
+            let mut val: pbjson_types::Struct = Default::default();
+            for (k, v) in &self.generic_sensor {
+                val.fields.insert(
+                    format!("{}", k),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::NumberValue(*v as f64)),
+                    },
+                );
+            }
+            out.fields.insert(
+                "genericSensor".to_string(),
                 pbjson_types::Value {
                     kind: Some(pbjson_types::value::Kind::StructValue(val)),
                 },
@@ -611,136 +642,6 @@ impl CayenneLpp {
             );
         }
 
-        if !self.distance.is_empty() {
-            let mut val: pbjson_types::Struct = Default::default();
-            for (k, v) in &self.distance {
-                val.fields.insert(
-                    format!("{}", k),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::NumberValue(*v)),
-                    },
-                );
-            }
-            out.fields.insert(
-                "distance".to_string(),
-                pbjson_types::Value {
-                    kind: Some(pbjson_types::value::Kind::StructValue(val)),
-                },
-            );
-        }
-
-        if !self.gyrometer.is_empty() {
-            let mut val: pbjson_types::Struct = Default::default();
-            for (k, v) in &self.gyrometer {
-                let mut item: pbjson_types::Struct = Default::default();
-                item.fields.insert(
-                    "x".to_string(),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::NumberValue(v.x)),
-                    },
-                );
-                item.fields.insert(
-                    "y".to_string(),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::NumberValue(v.y)),
-                    },
-                );
-                item.fields.insert(
-                    "z".to_string(),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::NumberValue(v.z)),
-                    },
-                );
-
-                val.fields.insert(
-                    format!("{}", k),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::StructValue(item)),
-                    },
-                );
-            }
-            out.fields.insert(
-                "gyrometer".to_string(),
-                pbjson_types::Value {
-                    kind: Some(pbjson_types::value::Kind::StructValue(val)),
-                },
-            );
-        }
-
-        if !self.gps_location.is_empty() {
-            let mut val: pbjson_types::Struct = Default::default();
-            for (k, v) in &self.gps_location {
-                let mut item: pbjson_types::Struct = Default::default();
-                item.fields.insert(
-                    "latitude".to_string(),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::NumberValue(v.latitude)),
-                    },
-                );
-                item.fields.insert(
-                    "longitude".to_string(),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::NumberValue(v.longitude)),
-                    },
-                );
-                item.fields.insert(
-                    "altitude".to_string(),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::NumberValue(v.altitude)),
-                    },
-                );
-
-                val.fields.insert(
-                    format!("{}", k),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::StructValue(item)),
-                    },
-                );
-            }
-            out.fields.insert(
-                "gpsLocation".to_string(),
-                pbjson_types::Value {
-                    kind: Some(pbjson_types::value::Kind::StructValue(val)),
-                },
-            );
-        }
-
-        if !self.time.is_empty() {
-            let mut val: pbjson_types::Struct = Default::default();
-            for (k, v) in &self.time {
-                val.fields.insert(
-                    format!("{}", k),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::NumberValue(*v as f64)),
-                    },
-                );
-            }
-            out.fields.insert(
-                "time".to_string(),
-                pbjson_types::Value {
-                    kind: Some(pbjson_types::value::Kind::StructValue(val)),
-                },
-            );
-        }
-
-        if !self.generic_sensor.is_empty() {
-            let mut val: pbjson_types::Struct = Default::default();
-            for (k, v) in &self.generic_sensor {
-                val.fields.insert(
-                    format!("{}", k),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::NumberValue(*v as f64)),
-                    },
-                );
-            }
-            out.fields.insert(
-                "genericSensor".to_string(),
-                pbjson_types::Value {
-                    kind: Some(pbjson_types::value::Kind::StructValue(val)),
-                },
-            );
-        }
-
         if !self.voltage.is_empty() {
             let mut val: pbjson_types::Struct = Default::default();
             for (k, v) in &self.voltage {
@@ -867,6 +768,24 @@ impl CayenneLpp {
             );
         }
 
+        if !self.distance.is_empty() {
+            let mut val: pbjson_types::Struct = Default::default();
+            for (k, v) in &self.distance {
+                val.fields.insert(
+                    format!("{}", k),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::NumberValue(*v)),
+                    },
+                );
+            }
+            out.fields.insert(
+                "distance".to_string(),
+                pbjson_types::Value {
+                    kind: Some(pbjson_types::value::Kind::StructValue(val)),
+                },
+            );
+        }
+
         if !self.energy.is_empty() {
             let mut val: pbjson_types::Struct = Default::default();
             for (k, v) in &self.energy {
@@ -885,9 +804,83 @@ impl CayenneLpp {
             );
         }
 
-        if !self.colour.is_empty() {
+        if !self.direction.is_empty() {
             let mut val: pbjson_types::Struct = Default::default();
-            for (k, v) in &self.colour {
+            for (k, v) in &self.direction {
+                val.fields.insert(
+                    format!("{}", k),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::NumberValue(*v as f64)),
+                    },
+                );
+            }
+            out.fields.insert(
+                "direction".to_string(),
+                pbjson_types::Value {
+                    kind: Some(pbjson_types::value::Kind::StructValue(val)),
+                },
+            );
+        }
+
+        if !self.unix_time.is_empty() {
+            let mut val: pbjson_types::Struct = Default::default();
+            for (k, v) in &self.unix_time {
+                val.fields.insert(
+                    format!("{}", k),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::NumberValue(*v as f64)),
+                    },
+                );
+            }
+            out.fields.insert(
+                "unix_time".to_string(),
+                pbjson_types::Value {
+                    kind: Some(pbjson_types::value::Kind::StructValue(val)),
+                },
+            );
+        }
+
+        if !self.gyrometer.is_empty() {
+            let mut val: pbjson_types::Struct = Default::default();
+            for (k, v) in &self.gyrometer {
+                let mut item: pbjson_types::Struct = Default::default();
+                item.fields.insert(
+                    "x".to_string(),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::NumberValue(v.x)),
+                    },
+                );
+                item.fields.insert(
+                    "y".to_string(),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::NumberValue(v.y)),
+                    },
+                );
+                item.fields.insert(
+                    "z".to_string(),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::NumberValue(v.z)),
+                    },
+                );
+
+                val.fields.insert(
+                    format!("{}", k),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::StructValue(item)),
+                    },
+                );
+            }
+            out.fields.insert(
+                "gyrometer".to_string(),
+                pbjson_types::Value {
+                    kind: Some(pbjson_types::value::Kind::StructValue(val)),
+                },
+            );
+        }
+
+        if !self.color.is_empty() {
+            let mut val: pbjson_types::Struct = Default::default();
+            for (k, v) in &self.color {
                 let mut item: pbjson_types::Struct = Default::default();
                 item.fields.insert(
                     "r".to_string(),
@@ -916,25 +909,45 @@ impl CayenneLpp {
                 );
             }
             out.fields.insert(
-                "colour".to_string(),
+                "color".to_string(),
                 pbjson_types::Value {
                     kind: Some(pbjson_types::value::Kind::StructValue(val)),
                 },
             );
         }
 
-        if !self.direction.is_empty() {
+        if !self.gps_location.is_empty() {
             let mut val: pbjson_types::Struct = Default::default();
-            for (k, v) in &self.direction {
+            for (k, v) in &self.gps_location {
+                let mut item: pbjson_types::Struct = Default::default();
+                item.fields.insert(
+                    "latitude".to_string(),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::NumberValue(v.latitude)),
+                    },
+                );
+                item.fields.insert(
+                    "longitude".to_string(),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::NumberValue(v.longitude)),
+                    },
+                );
+                item.fields.insert(
+                    "altitude".to_string(),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::NumberValue(v.altitude)),
+                    },
+                );
+
                 val.fields.insert(
                     format!("{}", k),
                     pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::NumberValue(*v as f64)),
+                        kind: Some(pbjson_types::value::Kind::StructValue(item)),
                     },
                 );
             }
             out.fields.insert(
-                "direction".to_string(),
+                "gpsLocation".to_string(),
                 pbjson_types::Value {
                     kind: Some(pbjson_types::value::Kind::StructValue(val)),
                 },
@@ -958,7 +971,6 @@ impl CayenneLpp {
                 },
             );
         }
-
         out
     }
 
@@ -1037,6 +1049,27 @@ impl CayenneLpp {
                 let c: u8 = k.parse()?;
                 if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
                     self.analog_output.insert(c, *v);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn set_generic_sensor(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
+        let mut buf: [u8; 4] = [0; 4];
+        cur.read_exact(&mut buf)?;
+        let val = u32::from_be_bytes(buf);
+        self.generic_sensor.insert(channel, val);
+        Ok(())
+    }
+
+    fn set_generic_sensor_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
+        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
+            for (k, v) in &s.fields {
+                let c: u8 = k.parse()?;
+                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
+                    self.generic_sensor.insert(c, *v as u32);
                 }
             }
         }
@@ -1207,6 +1240,153 @@ impl CayenneLpp {
         Ok(())
     }
 
+    fn set_voltage(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
+        let mut buf: [u8; 2] = [0; 2];
+        cur.read_exact(&mut buf)?;
+        let val = u16::from_be_bytes(buf);
+        self.voltage.insert(channel, (val as f64) / 100.0);
+        Ok(())
+    }
+
+    fn set_voltage_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
+        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
+            for (k, v) in &s.fields {
+                let c: u8 = k.parse()?;
+                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
+                    self.voltage.insert(c, *v);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn set_current(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
+        let mut buf: [u8; 2] = [0; 2];
+        cur.read_exact(&mut buf)?;
+        let val = u16::from_be_bytes(buf);
+        self.current.insert(channel, (val as f64) / 1000.0);
+        Ok(())
+    }
+
+    fn set_current_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
+        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
+            for (k, v) in &s.fields {
+                let c: u8 = k.parse()?;
+                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
+                    self.current.insert(c, *v);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn set_frequency(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
+        let mut buf: [u8; 4] = [0; 4];
+        cur.read_exact(&mut buf)?;
+        let val = u32::from_be_bytes(buf);
+        self.frequency.insert(channel, val);
+        Ok(())
+    }
+
+    fn set_frequency_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
+        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
+            for (k, v) in &s.fields {
+                let c: u8 = k.parse()?;
+                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
+                    self.frequency.insert(c, *v as u32);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn set_percentage(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
+        let mut buf: [u8; 1] = [0; 1];
+        cur.read_exact(&mut buf)?;
+        let val = u8::from_be_bytes(buf);
+        self.percentage.insert(channel, val);
+        Ok(())
+    }
+
+    fn set_percentage_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
+        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
+            for (k, v) in &s.fields {
+                let c: u8 = k.parse()?;
+                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
+                    self.percentage.insert(c, *v as u8);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn set_altitude(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
+        let mut buf: [u8; 2] = [0; 2];
+        cur.read_exact(&mut buf)?;
+        let val = i16::from_be_bytes(buf);
+        self.altitude.insert(channel, val);
+        Ok(())
+    }
+
+    fn set_altitude_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
+        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
+            for (k, v) in &s.fields {
+                let c: u8 = k.parse()?;
+                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
+                    self.altitude.insert(c, *v as i16);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn set_concentration(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
+        let mut buf: [u8; 2] = [0; 2];
+        cur.read_exact(&mut buf)?;
+        let val = u16::from_be_bytes(buf);
+        self.concentration.insert(channel, val);
+        Ok(())
+    }
+
+    fn set_concentration_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
+        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
+            for (k, v) in &s.fields {
+                let c: u8 = k.parse()?;
+                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
+                    self.concentration.insert(c, *v as u16);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn set_power(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
+        let mut buf: [u8; 2] = [0; 2];
+        cur.read_exact(&mut buf)?;
+        let val = u16::from_be_bytes(buf);
+        self.power.insert(channel, val);
+        Ok(())
+    }
+
+    fn set_power_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
+        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
+            for (k, v) in &s.fields {
+                let c: u8 = k.parse()?;
+                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
+                    self.power.insert(c, *v as u16);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     fn set_distance(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
         let mut buf: [u8; 4] = [0; 4];
         cur.read_exact(&mut buf)?;
@@ -1221,6 +1401,69 @@ impl CayenneLpp {
                 let c: u8 = k.parse()?;
                 if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
                     self.distance.insert(c, *v);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn set_energy(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
+        let mut buf: [u8; 4] = [0; 4];
+        cur.read_exact(&mut buf)?;
+        let val = u32::from_be_bytes(buf);
+        self.energy.insert(channel, (val as f64) / 1000.0);
+        Ok(())
+    }
+
+    fn set_energy_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
+        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
+            for (k, v) in &s.fields {
+                let c: u8 = k.parse()?;
+                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
+                    self.energy.insert(c, *v);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn set_direction(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
+        let mut buf: [u8; 2] = [0; 2];
+        cur.read_exact(&mut buf)?;
+        let val = u16::from_be_bytes(buf);
+        self.direction.insert(channel, val);
+        Ok(())
+    }
+
+    fn set_direction_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
+        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
+            for (k, v) in &s.fields {
+                let c: u8 = k.parse()?;
+                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
+                    self.direction.insert(c, *v as u16);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn set_unix_time(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
+        let mut buf: [u8; 4] = [0; 4];
+        cur.read_exact(&mut buf)?;
+        let val = u32::from_be_bytes(buf);
+        self.unix_time.insert(channel, val);
+        Ok(())
+    }
+
+    fn set_unix_time_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
+        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
+            for (k, v) in &s.fields {
+                let c: u8 = k.parse()?;
+                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
+                    self.unix_time.insert(c, *v as u32);
                 }
             }
         }
@@ -1282,6 +1525,58 @@ impl CayenneLpp {
                 }
 
                 self.gyrometer.insert(c, item);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn set_color(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
+        let mut buf_rgb: [u8; 3] = [0; 3];
+        cur.read_exact(&mut buf_rgb)?;
+        self.color.insert(
+            channel,
+            Color {
+                r: (buf_rgb[0]),
+                g: (buf_rgb[1]),
+                b: (buf_rgb[2]),
+            },
+        );
+        Ok(())
+    }
+
+    fn set_color_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
+        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
+            for (k, v) in &s.fields {
+                let c: u8 = k.parse()?;
+                let mut item = Color { r: 0, g: 0, b: 0 };
+
+                if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
+                    let r = s
+                        .fields
+                        .get("r")
+                        .ok_or_else(|| anyhow!("r field is missing"))?;
+                    let g = s
+                        .fields
+                        .get("g")
+                        .ok_or_else(|| anyhow!("g field is missing"))?;
+                    let b = s
+                        .fields
+                        .get("b")
+                        .ok_or_else(|| anyhow!("b field is missing"))?;
+
+                    if let Some(prost_types::value::Kind::NumberValue(v)) = &r.kind {
+                        item.r = *v as u8;
+                    }
+                    if let Some(prost_types::value::Kind::NumberValue(v)) = &g.kind {
+                        item.g = *v as u8;
+                    }
+                    if let Some(prost_types::value::Kind::NumberValue(v)) = &b.kind {
+                        item.b = *v as u8;
+                    }
+                }
+
+                self.color.insert(c, item);
             }
         }
 
@@ -1354,292 +1649,6 @@ impl CayenneLpp {
         Ok(())
     }
 
-    fn set_time(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
-        let mut buf: [u8; 4] = [0; 4];
-        cur.read_exact(&mut buf)?;
-        let val = u32::from_be_bytes(buf);
-        self.time.insert(channel, val);
-        Ok(())
-    }
-
-    fn set_time_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
-        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
-            for (k, v) in &s.fields {
-                let c: u8 = k.parse()?;
-                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
-                    self.time.insert(c, *v as u32);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn set_generic_sensor(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
-        let mut buf: [u8; 4] = [0; 4];
-        cur.read_exact(&mut buf)?;
-        let val = u32::from_be_bytes(buf);
-        self.generic_sensor.insert(channel, val);
-        Ok(())
-    }
-
-    fn set_generic_sensor_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
-        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
-            for (k, v) in &s.fields {
-                let c: u8 = k.parse()?;
-                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
-                    self.generic_sensor.insert(c, *v as u32);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn set_voltage(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
-        let mut buf: [u8; 2] = [0; 2];
-        cur.read_exact(&mut buf)?;
-        let val = u16::from_be_bytes(buf);
-        self.voltage.insert(channel, (val as f64) / 100.0);
-        Ok(())
-    }
-
-    fn set_voltage_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
-        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
-            for (k, v) in &s.fields {
-                let c: u8 = k.parse()?;
-                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
-                    self.voltage.insert(c, *v);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn set_current(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
-        let mut buf: [u8; 2] = [0; 2];
-        cur.read_exact(&mut buf)?;
-        let val = u16::from_be_bytes(buf);
-        self.current.insert(channel, (val as f64) / 1000.0);
-        Ok(())
-    }
-
-    fn set_current_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
-        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
-            for (k, v) in &s.fields {
-                let c: u8 = k.parse()?;
-                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
-                    self.current.insert(c, *v);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn set_frequency(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
-        let mut buf: [u8; 4] = [0; 4];
-        cur.read_exact(&mut buf)?;
-        let val = u32::from_be_bytes(buf);
-        self.frequency.insert(channel, val);
-        Ok(())
-    }
-
-    fn set_frequency_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
-        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
-            for (k, v) in &s.fields {
-                let c: u8 = k.parse()?;
-                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
-                    self.frequency.insert(c, *v as u32);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn set_percentage(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
-        let mut buf: [u8; 1] = [0; 1];
-        cur.read_exact(&mut buf)?;
-        self.percentage.insert(channel, buf[0]);
-        Ok(())
-    }
-
-    fn set_percentage_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
-        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
-            for (k, v) in &s.fields {
-                let c: u8 = k.parse()?;
-                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
-                    self.percentage.insert(c, *v as u8);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn set_altitude(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
-        let mut buf: [u8; 2] = [0; 2];
-        cur.read_exact(&mut buf)?;
-        let val = u16::from_be_bytes(buf);
-        self.altitude.insert(channel, val);
-        Ok(())
-    }
-
-    fn set_altitude_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
-        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
-            for (k, v) in &s.fields {
-                let c: u8 = k.parse()?;
-                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
-                    self.altitude.insert(c, *v as u16);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn set_concentration(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
-        let mut buf: [u8; 2] = [0; 2];
-        cur.read_exact(&mut buf)?;
-        let val = u16::from_be_bytes(buf);
-        self.concentration.insert(channel, val);
-        Ok(())
-    }
-
-    fn set_concentration_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
-        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
-            for (k, v) in &s.fields {
-                let c: u8 = k.parse()?;
-                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
-                    self.concentration.insert(c, *v as u16);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn set_power(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
-        let mut buf: [u8; 2] = [0; 2];
-        cur.read_exact(&mut buf)?;
-        let val = u16::from_be_bytes(buf);
-        self.power.insert(channel, val);
-        Ok(())
-    }
-
-    fn set_power_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
-        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
-            for (k, v) in &s.fields {
-                let c: u8 = k.parse()?;
-                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
-                    self.power.insert(c, *v as u16);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn set_energy(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
-        let mut buf: [u8; 4] = [0; 4];
-        cur.read_exact(&mut buf)?;
-        let val = u32::from_be_bytes(buf);
-        self.energy.insert(channel, (val as f64) / 1000.0);
-        Ok(())
-    }
-
-    fn set_energy_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
-        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
-            for (k, v) in &s.fields {
-                let c: u8 = k.parse()?;
-                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
-                    self.energy.insert(c, *v);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn set_colour(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
-        let mut buf_r: [u8; 1] = [0; 1];
-        let mut buf_g: [u8; 1] = [0; 1];
-        let mut buf_b: [u8; 1] = [0; 1];
-        cur.read_exact(&mut buf_r)?;
-        cur.read_exact(&mut buf_g)?;
-        cur.read_exact(&mut buf_b)?;
-        self.colour.insert(
-            channel,
-            Colour {
-                r: buf_r[0],
-                g: buf_g[0],
-                b: buf_b[0],
-            },
-        );
-        Ok(())
-    }
-
-    fn set_colour_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
-        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
-            for (k, v) in &s.fields {
-                let c: u8 = k.parse()?;
-                let mut item = Colour { r: 0, g: 0, b: 0 };
-
-                if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
-                    let r = s
-                        .fields
-                        .get("r")
-                        .ok_or_else(|| anyhow!("red field is missing"))?;
-                    let g = s
-                        .fields
-                        .get("g")
-                        .ok_or_else(|| anyhow!("green field is missing"))?;
-                    let b = s
-                        .fields
-                        .get("b")
-                        .ok_or_else(|| anyhow!("blue field is missing"))?;
-
-                    if let Some(prost_types::value::Kind::NumberValue(v)) = &r.kind {
-                        item.r = *v as u8;
-                    }
-                    if let Some(prost_types::value::Kind::NumberValue(v)) = &g.kind {
-                        item.g = *v as u8;
-                    }
-                    if let Some(prost_types::value::Kind::NumberValue(v)) = &b.kind {
-                        item.b = *v as u8;
-                    }
-
-                    self.colour.insert(c, item);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn set_direction(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
-        let mut buf: [u8; 2] = [0; 2];
-        cur.read_exact(&mut buf)?;
-        let val = u16::from_be_bytes(buf);
-        self.direction.insert(channel, val);
-        Ok(())
-    }
-
-    fn set_direction_from_value(&mut self, v: &prost_types::Value) -> Result<()> {
-        if let Some(prost_types::value::Kind::StructValue(s)) = &v.kind {
-            for (k, v) in &s.fields {
-                let c: u8 = k.parse()?;
-                if let Some(prost_types::value::Kind::NumberValue(v)) = &v.kind {
-                    self.direction.insert(c, *v as u16);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     fn set_switch(&mut self, channel: u8, cur: &mut Cursor<&[u8]>) -> Result<()> {
         let mut buf: [u8; 1] = [0; 1];
         cur.read_exact(&mut buf)?;
@@ -1672,29 +1681,28 @@ pub mod test {
             3, 1, 100, 5, 1, 210, // digital output
             3, 2, 0, 10, 5, 2, 3, 232, // analog input
             3, 3, 0, 10, 5, 3, 3, 232, // analog output
+            3, 100, 0, 0, 0, 1, 5, 100, 255, 254, 253, 252, // generic sensors
             3, 101, 0, 10, 5, 101, 3, 232, // illuminance sensors
             3, 102, 5, 5, 102, 3, // presence sensors
             3, 103, 1, 16, 5, 103, 0, 255, // temperature sensors
             3, 104, 41, 5, 104, 150, // humidity sensors
             3, 113, 0, 1, 0, 2, 0, 3, 5, 113, 3, 234, 7, 211, 11, 187, // accelerometers
             3, 115, 4, 31, 5, 115, 9, 196, // barometers
+            3, 116, 0, 1, 5, 116, 255, 254, //voltage
+            3, 117, 0, 2, 5, 117, 255, 253, //current
+            3, 118, 0, 0, 0, 1, 5, 118, 255, 254, 253, 251, //frequency
+            3, 120, 0, 5, 120, 100, //percentage
+            3, 121, 0, 1, 5, 121, 255, 251, //altitude
+            3, 125, 0, 7, 5, 125, 255, 254, //concentration
+            3, 128, 0, 8, 5, 128, 254, 253, //power
             3, 130, 0, 0, 1, 16, 5, 130, 1, 2, 3, 4, // distance
+            3, 131, 0, 0, 0, 12, 5, 131, 255, 254, 253, 254, // energy
+            3, 132, 0, 9, 5, 132, 255, 252, //direction
+            3, 133, 0, 0, 0, 13, 5, 133, 255, 254, 253, 253, // unix_time
             3, 134, 0, 1, 0, 2, 0, 3, 5, 134, 3, 233, 7, 210, 11, 187, // gyrometers
+            3, 135, 100, 150, 200, 5, 135, 250, 190, 0, // rgb-color
             1, 136, 6, 118, 95, 242, 150, 10, 0, 3, 232, // gps location
-            2, 133, 102, 5, 223, 31, // time
-            2, 100, 00, 01, 02, 03, // generic sensor
-            2, 116, 0x5a, 0xd2, // voltage 232.5V
-            2, 117, 0x04, 0xb0, // current 1.2A
-            2, 118, 0x33, 0xbe, 0x27, 0xa0, // frequency 868100000Hz
-            2, 120, 0x32, // percentage 50%
-            2, 121, 0x22, 0x90, // altitude 8848m
-            2, 125, 0x01, 0x90, // concentration 400ppm
-            2, 128, 0x03, 0xe8, // power 1000W
-            2, 130, 0x02, 0x85, 0x72, 0x60, // distance 42300m
-            2, 131, 0x00, 0x00, 0xb0, 0xf4, // energy 45.3kWh
-            2, 135, 0xff, 0x00, 0x00, // color red
-            2, 132, 0x00, 0xaa, // direction 170º
-            2, 142, 0x00, 5, 142, 0x01, // switch
+            3, 142, 0, 5, 142, 1, //switch
         ];
         let prost_struct = prost_types::Struct {
             fields: [
@@ -1785,6 +1793,30 @@ pub mod test {
                                     "5".to_string(),
                                     prost_types::Value {
                                         kind: Some(prost_types::value::Kind::NumberValue(10.0)),
+                                    },
+                                ),
+                            ]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                        })),
+                    },
+                ),
+                (
+                    "genericSensor".to_string(),
+                    prost_types::Value {
+                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
+                            fields: [
+                                (
+                                    "3".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(1.0)),
+                                    },
+                                ),
+                                (
+                                    "5".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(4294901244.0)),
                                     },
                                 ),
                             ]
@@ -2003,6 +2035,174 @@ pub mod test {
                     },
                 ),
                 (
+                    "voltage".to_string(),
+                    prost_types::Value {
+                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
+                            fields: [
+                                (
+                                    "3".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(0.01)),
+                                    },
+                                ),
+                                (
+                                    "5".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(655.34)),
+                                    },
+                                ),
+                            ]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                        })),
+                    },
+                ),
+                (
+                    "current".to_string(),
+                    prost_types::Value {
+                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
+                            fields: [
+                                (
+                                    "3".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(0.002)),
+                                    },
+                                ),
+                                (
+                                    "5".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(65.533)),
+                                    },
+                                ),
+                            ]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                        })),
+                    },
+                ),
+                (
+                    "frequency".to_string(),
+                    prost_types::Value {
+                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
+                            fields: [
+                                (
+                                    "3".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(1.0)),
+                                    },
+                                ),
+                                (
+                                    "5".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(4294901243.0)),
+                                    },
+                                ),
+                            ]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                        })),
+                    },
+                ),
+                (
+                    "percentage".to_string(),
+                    prost_types::Value {
+                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
+                            fields: [
+                                (
+                                    "3".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(0.0)),
+                                    },
+                                ),
+                                (
+                                    "5".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(100.0)),
+                                    },
+                                ),
+                            ]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                        })),
+                    },
+                ),
+                (
+                    "altitude".to_string(),
+                    prost_types::Value {
+                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
+                            fields: [
+                                (
+                                    "3".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(1.0)),
+                                    },
+                                ),
+                                (
+                                    "5".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(-5.0)),
+                                    },
+                                ),
+                            ]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                        })),
+                    },
+                ),
+                (
+                    "concentration".to_string(),
+                    prost_types::Value {
+                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
+                            fields: [
+                                (
+                                    "3".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(7.0)),
+                                    },
+                                ),
+                                (
+                                    "5".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(65534.0)),
+                                    },
+                                ),
+                            ]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                        })),
+                    },
+                ),
+                (
+                    "power".to_string(),
+                    prost_types::Value {
+                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
+                            fields: [
+                                (
+                                    "3".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(8.0)),
+                                    },
+                                ),
+                                (
+                                    "5".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(65277.0)),
+                                    },
+                                ),
+                            ]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                        })),
+                    },
+                ),
+                (
                     "distance".to_string(),
                     prost_types::Value {
                         kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
@@ -2017,6 +2217,78 @@ pub mod test {
                                     "5".to_string(),
                                     prost_types::Value {
                                         kind: Some(prost_types::value::Kind::NumberValue(16909.060)),
+                                    },
+                                ),
+                            ]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                        })),
+                    },
+                ),
+                (
+                    "energy".to_string(),
+                    prost_types::Value {
+                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
+                            fields: [
+                                (
+                                    "3".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(0.012)),
+                                    },
+                                ),
+                                (
+                                    "5".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(4294901.246)),
+                                    },
+                                ),
+                            ]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                        })),
+                    },
+                ),
+                (
+                    "direction".to_string(),
+                    prost_types::Value {
+                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
+                            fields: [
+                                (
+                                    "3".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(9.0)),
+                                    },
+                                ),
+                                (
+                                    "5".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(65532.0)),
+                                    },
+                                ),
+                            ]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                        })),
+                    },
+                ),
+                (
+                    "unix_time".to_string(),
+                    prost_types::Value {
+                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
+                            fields: [
+                                (
+                                    "3".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(13.0)),
+                                    },
+                                ),
+                                (
+                                    "5".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::NumberValue(4294901245.0)),
                                     },
                                 ),
                             ]
@@ -2115,6 +2387,94 @@ pub mod test {
                     },
                 ),
                 (
+                    "color".to_string(),
+                    prost_types::Value {
+                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
+                            fields: [
+                                (
+                                    "3".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::StructValue(
+                                            prost_types::Struct {
+                                                fields: [(
+                                                    "r".to_string(),
+                                                    prost_types::Value {
+                                                        kind: Some(
+                                                            prost_types::value::Kind::NumberValue(
+                                                                100.0,
+                                                            ),
+                                                        ),
+                                                    }),(
+                                                    "g".to_string(),
+                                                    prost_types::Value {
+                                                        kind: Some(
+                                                            prost_types::value::Kind::NumberValue(
+                                                                150.0,
+                                                            ),
+                                                        ),
+                                                    }),(
+                                                    "b".to_string(),
+                                                    prost_types::Value {
+                                                        kind: Some(
+                                                            prost_types::value::Kind::NumberValue(
+                                                                200.0,
+                                                            ),
+                                                        ),
+                                                    },
+                                                )]
+                                                .iter()
+                                                .cloned()
+                                                .collect(),
+                                            },
+                                        )),
+                                    },
+                                ),
+                                (
+                                    "5".to_string(),
+                                    prost_types::Value {
+                                        kind: Some(prost_types::value::Kind::StructValue(
+                                            prost_types::Struct {
+                                                fields: [(
+                                                    "r".to_string(),
+                                                    prost_types::Value {
+                                                        kind: Some(
+                                                            prost_types::value::Kind::NumberValue(
+                                                                250.0,
+                                                            ),
+                                                        ),
+                                                    }),(
+                                                    "g".to_string(),
+                                                    prost_types::Value {
+                                                        kind: Some(
+                                                            prost_types::value::Kind::NumberValue(
+                                                                190.0,
+                                                            ),
+                                                        ),
+                                                    }),(
+                                                    "b".to_string(),
+                                                    prost_types::Value {
+                                                        kind: Some(
+                                                            prost_types::value::Kind::NumberValue(
+                                                                0.0,
+                                                            ),
+                                                        ),
+                                                    },
+                                                )]
+                                                .iter()
+                                                .cloned()
+                                                .collect(),
+                                            },
+                                        )),
+                                    },
+                                ),
+                            ]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                        })),
+                    },
+                ),
+                (
                     "gpsLocation".to_string(),
                     prost_types::Value {
                         kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
@@ -2153,248 +2513,12 @@ pub mod test {
                     },
                 ),
                 (
-                    "time".to_string(),
-                    prost_types::Value {
-                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
-                            fields: [
-                                (
-                                    "2".to_string(),
-                                    prost_types::Value {
-                                        kind: Some(prost_types::value::Kind::NumberValue(1711660831.0)),
-                                    },
-                                ),
-                            ]
-                            .iter()
-                            .cloned()
-                            .collect(),
-                        })),
-                    },
-                ),
-                (
-                    "genericSensor".to_string(),
-                    prost_types::Value {
-                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
-                            fields: [
-                                (
-                                    "2".to_string(),
-                                    prost_types::Value {
-                                        kind: Some(prost_types::value::Kind::NumberValue(66051.0)),
-                                    },
-                                ),
-                            ]
-                            .iter()
-                            .cloned()
-                            .collect(),
-                        })),
-                    },
-                ),
-                (
-                    "voltage".to_string(),
-                    prost_types::Value {
-                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
-                            fields: [
-                                (
-                                    "2".to_string(),
-                                    prost_types::Value {
-                                        kind: Some(prost_types::value::Kind::NumberValue(232.5)),
-                                    },
-                                ),
-                            ]
-                            .iter()
-                            .cloned()
-                            .collect(),
-                        })),
-                    },
-                ),
-                (
-                    "current".to_string(),
-                    prost_types::Value {
-                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
-                            fields: [
-                                (
-                                    "2".to_string(),
-                                    prost_types::Value {
-                                        kind: Some(prost_types::value::Kind::NumberValue(1.2)),
-                                    },
-                                ),
-                            ]
-                            .iter()
-                            .cloned()
-                            .collect(),
-                        })),
-                    },
-                ),
-                (
-                    "frequency".to_string(),
-                    prost_types::Value {
-                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
-                            fields: [
-                                (
-                                    "2".to_string(),
-                                    prost_types::Value {
-                                        kind: Some(prost_types::value::Kind::NumberValue(868100000.0)),
-                                    },
-                                ),
-                            ]
-                            .iter()
-                            .cloned()
-                            .collect(),
-                        })),
-                    },
-                ),
-                (
-                    "percentage".to_string(),
-                    prost_types::Value {
-                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
-                            fields: [
-                                (
-                                    "2".to_string(),
-                                    prost_types::Value {
-                                        kind: Some(prost_types::value::Kind::NumberValue(50.0)),
-                                    },
-                                ),
-                            ]
-                            .iter()
-                            .cloned()
-                            .collect(),
-                        })),
-                    },
-                ),
-                (
-                    "altitude".to_string(),
-                    prost_types::Value {
-                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
-                            fields: [
-                                (
-                                    "2".to_string(),
-                                    prost_types::Value {
-                                        kind: Some(prost_types::value::Kind::NumberValue(8848.0)),
-                                    },
-                                ),
-                            ]
-                            .iter()
-                            .cloned()
-                            .collect(),
-                        })),
-                    },
-                ),
-                (
-                    "concentration".to_string(),
-                    prost_types::Value {
-                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
-                            fields: [
-                                (
-                                    "2".to_string(),
-                                    prost_types::Value {
-                                        kind: Some(prost_types::value::Kind::NumberValue(400.0)),
-                                    },
-                                ),
-                            ]
-                            .iter()
-                            .cloned()
-                            .collect(),
-                        })),
-                    },
-                ),
-                (
-                    "power".to_string(),
-                    prost_types::Value {
-                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
-                            fields: [
-                                (
-                                    "2".to_string(),
-                                    prost_types::Value {
-                                        kind: Some(prost_types::value::Kind::NumberValue(1000.0)),
-                                    },
-                                ),
-                            ]
-                            .iter()
-                            .cloned()
-                            .collect(),
-                        })),
-                    },
-                ),
-                (
-                    "energy".to_string(),
-                    prost_types::Value {
-                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
-                            fields: [
-                                (
-                                    "2".to_string(),
-                                    prost_types::Value {
-                                        kind: Some(prost_types::value::Kind::NumberValue(45.3)),
-                                    },
-                                ),
-                            ]
-                            .iter()
-                            .cloned()
-                            .collect(),
-                        })),
-                    },
-                ),
-                (
-                    "colour".to_string(),
-                    prost_types::Value {
-                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
-                            fields: [
-                                (
-                                    "2".to_string(),
-                                    prost_types::Value {
-                                        kind: Some(
-                                              prost_types::value::Kind::StructValue(prost_types::Struct{
-                                                  fields: [
-                                                      (
-                                                          "r".to_string(),
-                                                          prost_types::Value {
-                                                              kind: Some(prost_types::value::Kind::NumberValue(255.0)),
-                                                          },
-                                                      ),
-                                                      (
-                                                          "g".to_string(),
-                                                          prost_types::Value {
-                                                              kind: Some(prost_types::value::Kind::NumberValue(0.0)),
-                                                          },
-                                                      ),
-                                                      (
-                                                          "b".to_string(),
-                                                          prost_types::Value {
-                                                              kind: Some(prost_types::value::Kind::NumberValue(0.0)),
-                                                          },
-                                                      ),
-                                                  ].iter().cloned().collect(),
-                                              }),
-                                          ),
-                                    },
-                                ),
-                            ].iter().cloned().collect(),
-                        })),
-                    },
-                ),
-                (
-                    "direction".to_string(),
-                    prost_types::Value {
-                        kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
-                            fields: [
-                                (
-                                    "2".to_string(),
-                                    prost_types::Value {
-                                        kind: Some(prost_types::value::Kind::NumberValue(170.0)),
-                                    },
-                                ),
-                            ]
-                            .iter()
-                            .cloned()
-                            .collect(),
-                        })),
-                    },
-                ),
-                (
                     "switch".to_string(),
                     prost_types::Value {
                         kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
                             fields: [
                                 (
-                                    "2".to_string(),
+                                    "3".to_string(),
                                     prost_types::Value {
                                         kind: Some(prost_types::value::Kind::NumberValue(0.0)),
                                     },
@@ -2525,6 +2649,34 @@ pub mod test {
                                         pbjson_types::Value {
                                             kind: Some(pbjson_types::value::Kind::NumberValue(
                                                 10.0,
+                                            )),
+                                        },
+                                    ),
+                                ]
+                                .iter()
+                                .cloned()
+                                .collect(),
+                            },
+                        )),
+                    },
+                ),
+                (
+                    "genericSensor".to_string(),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::StructValue(
+                            pbjson_types::Struct {
+                                fields: [
+                                    (
+                                        "3".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(1.0)),
+                                        },
+                                    ),
+                                    (
+                                        "5".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(
+                                                4294901244.0,
                                             )),
                                         },
                                     ),
@@ -2769,6 +2921,202 @@ pub mod test {
                     },
                 ),
                 (
+                    "voltage".to_string(),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::StructValue(
+                            pbjson_types::Struct {
+                                fields: [
+                                    (
+                                        "3".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(0.01)),
+                                        },
+                                    ),
+                                    (
+                                        "5".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(
+                                              655.34,
+                                            )),
+                                        },
+                                    ),
+                                ]
+                                .iter()
+                                .cloned()
+                                .collect(),
+                            },
+                        )),
+                    },
+                ),
+                (
+                    "current".to_string(),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::StructValue(
+                            pbjson_types::Struct {
+                                fields: [
+                                    (
+                                        "3".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(0.002)),
+                                        },
+                                    ),
+                                    (
+                                        "5".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(
+                                              65.533,
+                                            )),
+                                        },
+                                    ),
+                                ]
+                                .iter()
+                                .cloned()
+                                .collect(),
+                            },
+                        )),
+                    },
+                ),
+                (
+                    "frequency".to_string(),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::StructValue(
+                            pbjson_types::Struct {
+                                fields: [
+                                    (
+                                        "3".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(1.0)),
+                                        },
+                                    ),
+                                    (
+                                        "5".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(
+                                              4294901243.0,
+                                            )),
+                                        },
+                                    ),
+                                ]
+                                .iter()
+                                .cloned()
+                                .collect(),
+                            },
+                        )),
+                    },
+                ),
+                (
+                    "percentage".to_string(),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::StructValue(
+                            pbjson_types::Struct {
+                                fields: [
+                                    (
+                                        "3".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(0.0)),
+                                        },
+                                    ),
+                                    (
+                                        "5".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(
+                                              100.0,
+                                            )),
+                                        },
+                                    ),
+                                ]
+                                .iter()
+                                .cloned()
+                                .collect(),
+                            },
+                        )),
+                    },
+                ),
+                (
+                    "altitude".to_string(),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::StructValue(
+                            pbjson_types::Struct {
+                                fields: [
+                                    (
+                                        "3".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(1.0)),
+                                        },
+                                    ),
+                                    (
+                                        "5".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(
+                                              -5.0,
+                                            )),
+                                        },
+                                    ),
+                                ]
+                                .iter()
+                                .cloned()
+                                .collect(),
+                            },
+                        )),
+                    },
+                ),
+                (
+                    "concentration".to_string(),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::StructValue(
+                            pbjson_types::Struct {
+                                fields: [
+                                    (
+                                        "3".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(7.0)),
+                                        },
+                                    ),
+                                    (
+                                        "5".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(
+                                              65534.0,
+                                            )),
+                                        },
+                                    ),
+                                ]
+                                .iter()
+                                .cloned()
+                                .collect(),
+                            },
+                        )),
+                    },
+                ),
+                (
+                    "power".to_string(),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::StructValue(
+                            pbjson_types::Struct {
+                                fields: [
+                                    (
+                                        "3".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(8.0)),
+                                        },
+                                    ),
+                                    (
+                                        "5".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(
+                                              65277.0,
+                                            )),
+                                        },
+                                    ),
+                                ]
+                                .iter()
+                                .cloned()
+                                .collect(),
+                            },
+                        )),
+                    },
+                ),
+                (
                     "distance".to_string(),
                     pbjson_types::Value {
                         kind: Some(pbjson_types::value::Kind::StructValue(
@@ -2785,6 +3133,90 @@ pub mod test {
                                         pbjson_types::Value {
                                             kind: Some(pbjson_types::value::Kind::NumberValue(
                                               16909.060,
+                                            )),
+                                        },
+                                    ),
+                                ]
+                                .iter()
+                                .cloned()
+                                .collect(),
+                            },
+                        )),
+                    },
+                ),
+                (
+                    "energy".to_string(),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::StructValue(
+                            pbjson_types::Struct {
+                                fields: [
+                                    (
+                                        "3".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(0.012)),
+                                        },
+                                    ),
+                                    (
+                                        "5".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(
+                                              4294901.246,
+                                            )),
+                                        },
+                                    ),
+                                ]
+                                .iter()
+                                .cloned()
+                                .collect(),
+                            },
+                        )),
+                    },
+                ),
+                (
+                    "direction".to_string(),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::StructValue(
+                            pbjson_types::Struct {
+                                fields: [
+                                    (
+                                        "3".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(9.0)),
+                                        },
+                                    ),
+                                    (
+                                        "5".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(
+                                              65532.0,
+                                            )),
+                                        },
+                                    ),
+                                ]
+                                .iter()
+                                .cloned()
+                                .collect(),
+                            },
+                        )),
+                    },
+                ),
+                (
+                    "unix_time".to_string(),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::StructValue(
+                            pbjson_types::Struct {
+                                fields: [
+                                    (
+                                        "3".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(13.0)),
+                                        },
+                                    ),
+                                    (
+                                        "5".to_string(),
+                                        pbjson_types::Value {
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(
+                                              4294901245.0,
                                             )),
                                         },
                                     ),
@@ -2885,6 +3317,94 @@ pub mod test {
                     },
                 ),
                 (
+                    "color".to_string(),
+                    pbjson_types::Value {
+                        kind: Some(pbjson_types::value::Kind::StructValue(pbjson_types::Struct {
+                            fields: [
+                                (
+                                    "3".to_string(),
+                                    pbjson_types::Value {
+                                        kind: Some(pbjson_types::value::Kind::StructValue(
+                                            pbjson_types::Struct {
+                                                fields: [(
+                                                    "r".to_string(),
+                                                    pbjson_types::Value {
+                                                        kind: Some(
+                                                            pbjson_types::value::Kind::NumberValue(
+                                                                100.0,
+                                                            ),
+                                                        ),
+                                                    }),(
+                                                    "g".to_string(),
+                                                    pbjson_types::Value {
+                                                        kind: Some(
+                                                            pbjson_types::value::Kind::NumberValue(
+                                                                150.0,
+                                                            ),
+                                                        ),
+                                                    }),(
+                                                    "b".to_string(),
+                                                    pbjson_types::Value {
+                                                        kind: Some(
+                                                            pbjson_types::value::Kind::NumberValue(
+                                                                200.0,
+                                                            ),
+                                                        ),
+                                                    },
+                                                )]
+                                                .iter()
+                                                .cloned()
+                                                .collect(),
+                                            },
+                                        )),
+                                    },
+                                ),
+                                (
+                                    "5".to_string(),
+                                    pbjson_types::Value {
+                                        kind: Some(pbjson_types::value::Kind::StructValue(
+                                            pbjson_types::Struct {
+                                                fields: [(
+                                                    "r".to_string(),
+                                                    pbjson_types::Value {
+                                                        kind: Some(
+                                                            pbjson_types::value::Kind::NumberValue(
+                                                                250.0,
+                                                            ),
+                                                        ),
+                                                    }),(
+                                                    "g".to_string(),
+                                                    pbjson_types::Value {
+                                                        kind: Some(
+                                                            pbjson_types::value::Kind::NumberValue(
+                                                                190.0,
+                                                            ),
+                                                        ),
+                                                    }),(
+                                                    "b".to_string(),
+                                                    pbjson_types::Value {
+                                                        kind: Some(
+                                                            pbjson_types::value::Kind::NumberValue(
+                                                                0.0,
+                                                            ),
+                                                        ),
+                                                    },
+                                                )]
+                                                .iter()
+                                                .cloned()
+                                                .collect(),
+                                            },
+                                        )),
+                                    },
+                                ),
+                            ]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                        })),
+                    },
+                ),
+                (
                     "gpsLocation".to_string(),
                     pbjson_types::Value {
                         kind: Some(pbjson_types::value::Kind::StructValue(pbjson_types::Struct {
@@ -2923,326 +3443,22 @@ pub mod test {
                     },
                 ),
                 (
-                    "time".to_string(),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::StructValue(
-                            pbjson_types::Struct {
-                                fields: [
-                                    (
-                                        "2".to_string(),
-                                        pbjson_types::Value {
-                                            kind: Some(pbjson_types::value::Kind::NumberValue(
-                                                1711660831.0,
-                                            )),
-                                        },
-                                    ),
-                                ]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            },
-                        )),
-                    },
-                ),
-                (
-                    "genericSensor".to_string(),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::StructValue(
-                            pbjson_types::Struct {
-                                fields: [
-                                    (
-                                        "2".to_string(),
-                                        pbjson_types::Value {
-                                            kind: Some(pbjson_types::value::Kind::NumberValue(
-                                                66051.0,
-                                            )),
-                                        },
-                                    ),
-                                ]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            },
-                        )),
-                    },
-                ),
-                (
-                    "voltage".to_string(),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::StructValue(
-                            pbjson_types::Struct {
-                                fields: [
-                                    (
-                                        "2".to_string(),
-                                        pbjson_types::Value {
-                                            kind: Some(pbjson_types::value::Kind::NumberValue(
-                                                232.5,
-                                            )),
-                                        },
-                                    ),
-                                ]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            },
-                        )),
-                    },
-                ),
-                (
-                    "current".to_string(),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::StructValue(
-                            pbjson_types::Struct {
-                                fields: [
-                                    (
-                                        "2".to_string(),
-                                        pbjson_types::Value {
-                                            kind: Some(pbjson_types::value::Kind::NumberValue(
-                                                1.2,
-                                            )),
-                                        },
-                                    ),
-                                ]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            },
-                        )),
-                    },
-                ),
-                (
-                    "frequency".to_string(),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::StructValue(
-                            pbjson_types::Struct {
-                                fields: [
-                                    (
-                                        "2".to_string(),
-                                        pbjson_types::Value {
-                                            kind: Some(pbjson_types::value::Kind::NumberValue(
-                                                868100000.0,
-                                            )),
-                                        },
-                                    ),
-                                ]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            },
-                        )),
-                    },
-                ),
-                (
-                    "percentage".to_string(),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::StructValue(
-                            pbjson_types::Struct {
-                                fields: [
-                                    (
-                                        "2".to_string(),
-                                        pbjson_types::Value {
-                                            kind: Some(pbjson_types::value::Kind::NumberValue(
-                                                50.0,
-                                            )),
-                                        },
-                                    ),
-                                ]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            },
-                        )),
-                    },
-                ),
-                (
-                    "altitude".to_string(),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::StructValue(
-                            pbjson_types::Struct {
-                                fields: [
-                                    (
-                                        "2".to_string(),
-                                        pbjson_types::Value {
-                                            kind: Some(pbjson_types::value::Kind::NumberValue(
-                                                8848.0,
-                                            )),
-                                        },
-                                    ),
-                                ]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            },
-                        )),
-                    },
-                ),
-                (
-                    "concentration".to_string(),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::StructValue(
-                            pbjson_types::Struct {
-                                fields: [
-                                    (
-                                        "2".to_string(),
-                                        pbjson_types::Value {
-                                            kind: Some(pbjson_types::value::Kind::NumberValue(
-                                                400.0,
-                                            )),
-                                        },
-                                    ),
-                                ]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            },
-                        )),
-                    },
-                ),
-                (
-                    "power".to_string(),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::StructValue(
-                            pbjson_types::Struct {
-                                fields: [
-                                    (
-                                        "2".to_string(),
-                                        pbjson_types::Value {
-                                            kind: Some(pbjson_types::value::Kind::NumberValue(
-                                                1000.0,
-                                            )),
-                                        },
-                                    ),
-                                ]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            },
-                        )),
-                    },
-                ),
-                (
-                    "distance".to_string(),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::StructValue(
-                            pbjson_types::Struct {
-                                fields: [
-                                    (
-                                        "2".to_string(),
-                                        pbjson_types::Value {
-                                            kind: Some(pbjson_types::value::Kind::NumberValue(
-                                                42300.0,
-                                            )),
-                                        },
-                                    ),
-                                ]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            },
-                        )),
-                    },
-                ),
-                (
-                    "energy".to_string(),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::StructValue(
-                            pbjson_types::Struct {
-                                fields: [
-                                    (
-                                        "2".to_string(),
-                                        pbjson_types::Value {
-                                            kind: Some(pbjson_types::value::Kind::NumberValue(
-                                                45.3,
-                                            )),
-                                        },
-                                    ),
-                                ]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            },
-                        )),
-                    },
-                ),
-                (
-                    "colour".to_string(),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::StructValue(pbjson_types::Struct {
-                            fields: [
-                                (
-                                    "2".to_string(),
-                                    pbjson_types::Value {
-                                        kind: Some(
-                                              pbjson_types::value::Kind::StructValue(pbjson_types::Struct{
-                                                  fields: [
-                                                      (
-                                                          "r".to_string(),
-                                                          pbjson_types::Value {
-                                                              kind: Some(pbjson_types::value::Kind::NumberValue(255.0)),
-                                                          },
-                                                      ),
-                                                      (
-                                                          "g".to_string(),
-                                                          pbjson_types::Value {
-                                                              kind: Some(pbjson_types::value::Kind::NumberValue(0.0)),
-                                                          },
-                                                      ),
-                                                      (
-                                                          "b".to_string(),
-                                                          pbjson_types::Value {
-                                                              kind: Some(pbjson_types::value::Kind::NumberValue(0.0)),
-                                                          },
-                                                      ),
-                                                  ].iter().cloned().collect(),
-                                              }),
-                                          ),
-                                    },
-                                ),
-                            ].iter().cloned().collect(),
-                        })),
-                    },
-                ),
-                (
-                    "direction".to_string(),
-                    pbjson_types::Value {
-                        kind: Some(pbjson_types::value::Kind::StructValue(
-                            pbjson_types::Struct {
-                                fields: [
-                                    (
-                                        "2".to_string(),
-                                        pbjson_types::Value {
-                                            kind: Some(pbjson_types::value::Kind::NumberValue(
-                                                170.0,
-                                            )),
-                                        },
-                                    ),
-                                ]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            },
-                        )),
-                    },
-                ),
-                (
                     "switch".to_string(),
                     pbjson_types::Value {
                         kind: Some(pbjson_types::value::Kind::StructValue(
                             pbjson_types::Struct {
                                 fields: [
                                     (
-                                        "2".to_string(),
+                                        "3".to_string(),
                                         pbjson_types::Value {
-                                            kind: Some(pbjson_types::value::Kind::NumberValue(
-                                                0.0,
-                                            )),
+                                            kind: Some(pbjson_types::value::Kind::NumberValue(0.0)),
                                         },
                                     ),
                                     (
                                         "5".to_string(),
                                         pbjson_types::Value {
                                             kind: Some(pbjson_types::value::Kind::NumberValue(
-                                                1.0,
+                                              1.0,
                                             )),
                                         },
                                     ),

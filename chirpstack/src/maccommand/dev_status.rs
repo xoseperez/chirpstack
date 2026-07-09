@@ -124,6 +124,7 @@ pub mod test {
             gateway_private_up_map: HashMap::new(),
             gateway_private_down_map: HashMap::new(),
             gateway_tenant_id_map: HashMap::new(),
+            gateway_downlink_priority_map: HashMap::new(),
             region_common_name: lrwn::region::CommonName::EU868,
             region_config_id: "eu868".into(),
             roaming_meta_data: None,
@@ -143,7 +144,7 @@ pub mod test {
         .await
         .unwrap();
         let dp = device_profile::create(device_profile::DeviceProfile {
-            tenant_id: tenant.id,
+            tenant_id: Some(tenant.id),
             name: "test-dp".into(),
             ..Default::default()
         })

@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useNavigate, Link, useParams } from "react-router-dom";
 
 import { Space, Breadcrumb, Card, Button } from "antd";
-import { PageHeader } from "@ant-design/pro-layout";
 
 import type { Tenant } from "@chirpstack/chirpstack-api-grpc-web/api/tenant_pb";
 import type {
@@ -21,6 +20,7 @@ import SessionStore from "../../stores/SessionStore";
 import DeleteConfirm from "../../components/DeleteConfirm";
 import Admin from "../../components/Admin";
 import { useTitle } from "../helpers";
+import PageHeader from "../../components/PageHeader";
 
 interface IProps {
   tenant: Tenant;
@@ -73,32 +73,22 @@ function EditDeviceProfile(props: IProps) {
   );
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size="large">
+    <Space orientation="vertical" style={{ width: "100%" }} size="large">
       <PageHeader
         breadcrumbRender={() => (
-          <Breadcrumb>
-            <Breadcrumb.Item>
-              <span>Tenants</span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${props.tenant.getId()}`}>{props.tenant.getName()}</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${props.tenant.getId()}/device-profiles`}>Device profiles</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>{dp.getName()}</span>
-            </Breadcrumb.Item>
-          </Breadcrumb>
+          <Breadcrumb
+            items={[
+              { title: "Tenants" },
+              { title: <Link to={`/tenants/${props.tenant.getId()}`}>{props.tenant.getName()}</Link> },
+              { title: <Link to={`/tenants/${props.tenant.getId()}/device-profiles`}>Device profiles</Link> },
+              { title: dp.getName() },
+            ]}
+          />
         )}
         title={dp.getName()}
         subTitle={`device profile id: ${dp.getId()}`}
         extra={[
-          <Admin tenantId={props.tenant.getId()} isDeviceAdmin>
+          <Admin tenantId={props.tenant.getId()} isDeviceAdmin key="delete-device-profile">
             <DeleteConfirm typ="device profile" confirm={dp.getName()} onConfirm={deleteDeviceProfile}>
               <Button danger type="primary">
                 Delete device profile

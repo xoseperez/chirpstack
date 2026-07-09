@@ -1,12 +1,12 @@
 import { Link, useNavigate } from "react-router-dom";
 
 import { Space, Breadcrumb, Card } from "antd";
-import { PageHeader } from "@ant-design/pro-layout";
 
 import type { CreateUserResponse } from "@chirpstack/chirpstack-api-grpc-web/api/user_pb";
 import { User, CreateUserRequest } from "@chirpstack/chirpstack-api-grpc-web/api/user_pb";
 
 import UserForm from "./UserForm";
+import PageHeader from "../../components/PageHeader";
 import UserStore from "../../stores/UserStore";
 import { useTitle } from "../helpers";
 
@@ -27,22 +27,12 @@ function CreateUser() {
   const user = new User();
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size="large">
+    <Space orientation="vertical" style={{ width: "100%" }} size="large">
       <PageHeader
         breadcrumbRender={() => (
-          <Breadcrumb>
-            <Breadcrumb.Item>
-              <span>Network Server</span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to="/users">Users</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>Add</span>
-            </Breadcrumb.Item>
-          </Breadcrumb>
+          <Breadcrumb
+            items={[{ title: "Network Server" }, { title: <Link to="/users">Users</Link> }, { title: "Add" }]}
+          />
         )}
         title="Add user"
       />

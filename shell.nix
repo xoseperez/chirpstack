@@ -1,4 +1,4 @@
-{ pkgs ? import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/nixos-25.05.tar.gz") {} }:
+{ pkgs ? import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/nixos-26.05.tar.gz") {} }:
 
 pkgs.mkShell {
   nativeBuildInputs = [
@@ -16,7 +16,7 @@ pkgs.mkShell {
     pkgs.protoc-gen-go-grpc     # go api
     pkgs.protoc-gen-grpc-web    # grpc-web api
     pkgs.nodejs                 # js api + ui
-    pkgs.yarn                   # ui
+    pkgs.pnpm                   # ui
     pkgs.openssl
     pkgs.sqlite                 # sqlite binary + library for diesel
     pkgs.postgresql             # psql binary + library for diesel

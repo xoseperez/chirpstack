@@ -2,7 +2,6 @@ import { Link } from "react-router-dom";
 
 import { Space, Breadcrumb, Button } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { PageHeader } from "@ant-design/pro-layout";
 
 import type { ListTenantUsersResponse, TenantUserListItem } from "@chirpstack/chirpstack-api-grpc-web/api/tenant_pb";
 import { ListTenantUsersRequest } from "@chirpstack/chirpstack-api-grpc-web/api/tenant_pb";
@@ -13,6 +12,7 @@ import DataTable from "../../components/DataTable";
 import TenantStore from "../../stores/TenantStore";
 import Admin from "../../components/Admin";
 import { useTitle } from "../helpers";
+import PageHeader from "../../components/PageHeader";
 
 interface IProps {
   tenant: Tenant;
@@ -85,26 +85,20 @@ function ListTenantUsers(props: IProps) {
   };
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size="large">
+    <Space orientation="vertical" style={{ width: "100%" }} size="large">
       <PageHeader
         breadcrumbRender={() => (
-          <Breadcrumb>
-            <Breadcrumb.Item>
-              <span>Tenants</span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${props.tenant.getId()}`}>{props.tenant.getName()}</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>Tenant users</span>
-            </Breadcrumb.Item>
-          </Breadcrumb>
+          <Breadcrumb
+            items={[
+              { title: "Tenants" },
+              { title: <Link to={`/tenants/${props.tenant.getId()}`}>{props.tenant.getName()}</Link> },
+              { title: "Tenant users" },
+            ]}
+          />
         )}
         title="Tenant users"
         extra={[
-          <Admin tenantId={props.tenant.getId()} isTenantAdmin>
+          <Admin tenantId={props.tenant.getId()} isTenantAdmin key="add-tenant-user">
             <Button type="primary">
               <Link to={`/tenants/${props.tenant.getId()}/users/create`}>Add tenant user</Link>
             </Button>

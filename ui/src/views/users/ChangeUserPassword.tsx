@@ -2,12 +2,12 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 
 import { Space, Breadcrumb, Card } from "antd";
-import { PageHeader } from "@ant-design/pro-layout";
 
 import type { User, GetUserResponse } from "@chirpstack/chirpstack-api-grpc-web/api/user_pb";
 import { GetUserRequest, UpdateUserPasswordRequest } from "@chirpstack/chirpstack-api-grpc-web/api/user_pb";
 import UserStore from "../../stores/UserStore";
 import PasswordForm from "./PasswordForm";
+import PageHeader from "../../components/PageHeader";
 import { useTitle } from "../helpers";
 
 function ChangeUserPassword() {
@@ -40,20 +40,10 @@ function ChangeUserPassword() {
   }
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size="large">
+    <Space orientation="vertical" style={{ width: "100%" }} size="large">
       <PageHeader
         breadcrumbRender={() => (
-          <Breadcrumb>
-            <Breadcrumb.Item>
-              <span>Users</span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>{user.getEmail()}</span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>Change password</span>
-            </Breadcrumb.Item>
-          </Breadcrumb>
+          <Breadcrumb items={[{ title: "Users" }, { title: user.getEmail() }, { title: "Change password" }]} />
         )}
         title={user.getEmail()}
         subTitle={`user id: ${user.getId()}`}

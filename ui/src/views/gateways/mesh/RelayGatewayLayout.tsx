@@ -3,7 +3,6 @@ import { useState, useEffect } from "react";
 import { Route, Routes, Link, useParams, useNavigate } from "react-router-dom";
 
 import { Space, Breadcrumb, Card, Button } from "antd";
-import { PageHeader } from "@ant-design/pro-layout";
 
 import type { Tenant } from "@chirpstack/chirpstack-api-grpc-web/api/tenant_pb";
 import type { RelayGateway, GetRelayGatewayResponse } from "@chirpstack/chirpstack-api-grpc-web/api/gateway_pb";
@@ -13,6 +12,7 @@ import Admin from "../../../components/Admin";
 import SessionStore from "../../../stores/SessionStore";
 import GatewayStore from "../../../stores/GatewayStore";
 import DeleteConfirm from "../../../components/DeleteConfirm";
+import PageHeader from "../../../components/PageHeader";
 
 import EditRelayGateway from "./EditRelayGateway";
 import { useTitle } from "../../helpers";
@@ -57,35 +57,23 @@ function RelayGatewayLayout(props: IProps) {
     SessionStore.isTenantGatewayAdmin(props.tenant.getId());
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size="large">
+    <Space orientation="vertical" style={{ width: "100%" }} size="large">
       <PageHeader
         breadcrumbRender={() => (
-          <Breadcrumb>
-            <Breadcrumb.Item>
-              <span>Tenants</span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${props.tenant.getId()}`}>{props.tenant.getName()}</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>Gateway Mesh</span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${props.tenant.getId()}/gateways/mesh/relays`}>Relay Gateways</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>{relayGateway.getName()}</span>
-            </Breadcrumb.Item>
-          </Breadcrumb>
+          <Breadcrumb
+            items={[
+              { title: "Tenants" },
+              { title: <Link to={`/tenants/${props.tenant.getId()}`}>{props.tenant.getName()}</Link> },
+              { title: "Gateway Mesh" },
+              { title: <Link to={`/tenants/${props.tenant.getId()}/gateways/mesh/relays`}>Relay Gateways</Link> },
+              { title: relayGateway.getName() },
+            ]}
+          />
         )}
         title={relayGateway.getName()}
         subTitle={`relay id: ${relayGateway.getRelayId()}`}
         extra={[
-          <Admin tenantId={props.tenant.getId()} isGatewayAdmin={isGatewayAdmin}>
+          <Admin tenantId={props.tenant.getId()} isGatewayAdmin={isGatewayAdmin} key="delete-relay-gateway">
             <DeleteConfirm confirm={relayGateway.getName()} typ="relay gateway" onConfirm={deleteRelayGateway}>
               <Button danger type="primary">
                 Delete Relay Gateway

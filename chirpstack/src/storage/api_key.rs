@@ -18,6 +18,7 @@ pub struct ApiKey {
     pub name: String,
     pub is_admin: bool,
     pub tenant_id: Option<fields::Uuid>,
+    pub is_read_only: bool,
 }
 
 impl ApiKey {
@@ -38,6 +39,7 @@ impl Default for ApiKey {
             name: "".into(),
             is_admin: false,
             tenant_id: None,
+            is_read_only: false,
         }
     }
 }

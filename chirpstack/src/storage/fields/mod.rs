@@ -1,4 +1,6 @@
 mod big_decimal;
+mod data_rates;
+mod dev_add_prefix_vec;
 mod dev_nonces;
 pub mod device;
 pub mod device_profile;
@@ -7,9 +9,12 @@ mod fuota;
 mod key_value;
 mod measurements;
 mod multicast_group_scheduling_type;
+mod string_vec;
 mod uuid;
 
 pub use big_decimal::BigDecimal;
+pub use data_rates::DataRates;
+pub use dev_add_prefix_vec::DevAddrPrefixVec;
 pub use dev_nonces::DevNonces;
 pub use device_profile::{AbpParams, AppLayerParams, ClassBParams, ClassCParams, RelayParams};
 pub use device_session::DeviceSession;
@@ -17,6 +22,7 @@ pub use fuota::{FuotaJob, RequestFragmentationSessionStatus};
 pub use key_value::KeyValue;
 pub use measurements::*;
 pub use multicast_group_scheduling_type::MulticastGroupSchedulingType;
+pub use string_vec::StringVec;
 pub use uuid::Uuid;
 
 #[cfg(feature = "postgres")]

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { Tabs, Form, Input, InputNumber, Select, Row, Col, Button, Upload, UploadFile, Switch } from "antd";
+import type { TabsProps } from "antd/lib";
 import { UploadOutlined, MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 
 import type { Tenant } from "@chirpstack/chirpstack-api-grpc-web/api/tenant_pb";
@@ -18,9 +19,9 @@ import {
   MulticastGroupSchedulingType,
 } from "@chirpstack/chirpstack-api-grpc-web/api/multicast_group_pb";
 
-import { onFinishFailed, getEnumName } from "../helpers";
+import { onFinishFailed } from "../helpers";
 import DeviceProfileStore from "../../stores/DeviceProfileStore";
-import AutocompleteInput from "../../components/AutocompleteInput";
+import DeviceProfileSelect from "../../components/DeviceProfileSelect";
 import type { OptionsCallbackFunc, OptionCallbackFunc } from "../../components/Autocomplete";
 
 interface IProps {
@@ -64,7 +65,7 @@ function FuotaDeploymentForm(props: IProps) {
     d.setApplicationId(v.applicationId);
 
     d.setName(v.name);
-    d.setDeviceProfileId(v.deviceProfileId);
+    d.setDeviceProfileId(v.deviceProfileId[v.deviceProfileId.length - 1]);
     d.setUnicastMaxRetryCount(v.unicastMaxRetryCount);
     d.setMulticastGroupType(v.multicastGroupType);
     d.setMulticastClassBPingSlotPeriodicity(v.multicastClassBPingSlotPeriodicity);
@@ -149,28 +150,24 @@ function FuotaDeploymentForm(props: IProps) {
     });
   };
 
-  return (
-    <Form
-      layout="vertical"
-      initialValues={props.initialValues.toObject()}
-      onFinish={onFinish}
-      onFinishFailed={onFinishFailed}
-      form={form}
-    >
-      <Tabs>
-        <Tabs.TabPane tab="Deployment" key="1">
+  const tabItems: TabsProps["items"] = [
+    {
+      key: "1",
+      label: "Deployment",
+      children: (
+        <>
           <Form.Item label="Name" name="name" rules={[{ required: true, message: "Please enter a name!" }]}>
             <Input disabled={props.disabled} />
           </Form.Item>
           <Row gutter={24}>
             <Col span={16}>
-              <AutocompleteInput
+              <DeviceProfileSelect
                 label="Device profile"
                 name="deviceProfileId"
-                getOption={getDeviceProfileOption}
-                getOptions={getDeviceProfileOptions}
-                disabled={props.disabled || props.update}
+                value={props.initialValues.getDeviceProfileId()}
+                tenant={props.tenant}
                 required
+                disabled={props.disabled || props.update}
               />
             </Col>
             <Col span={8}>
@@ -192,24 +189,31 @@ function FuotaDeploymentForm(props: IProps) {
                 tooltip="The multicast-group type defines the way how multicast frames are scheduled by the network-server."
                 rules={[{ required: true, message: "Please select a multicast group-type!" }]}
               >
-                <Select onChange={onMulticastGroupTypeChange} disabled={props.disabled}>
-                  <Select.Option value={MulticastGroupType.CLASS_C}>Class-C</Select.Option>
-                  <Select.Option value={MulticastGroupType.CLASS_B}>Class-B</Select.Option>
-                </Select>
+                <Select
+                  onChange={onMulticastGroupTypeChange}
+                  disabled={props.disabled}
+                  options={[
+                    { value: MulticastGroupType.CLASS_C, label: "Class-C" },
+                    { value: MulticastGroupType.CLASS_B, label: "Class-B" },
+                  ]}
+                />
               </Form.Item>
             </Col>
             <Col span={8}>
               <Form.Item label="Class-B ping-slot periodicity" name="multicastClassBPingSlotPeriodicity">
-                <Select disabled={!isMulticastClassB || props.disabled}>
-                  <Select.Option value={0}>Every second</Select.Option>
-                  <Select.Option value={1}>Every 2 seconds</Select.Option>
-                  <Select.Option value={2}>Every 4 seconds</Select.Option>
-                  <Select.Option value={3}>Every 8 seconds</Select.Option>
-                  <Select.Option value={4}>Every 16 seconds</Select.Option>
-                  <Select.Option value={5}>Every 32 seconds</Select.Option>
-                  <Select.Option value={6}>Every 64 seconds</Select.Option>
-                  <Select.Option value={7}>Every 128 seconds</Select.Option>
-                </Select>
+                <Select
+                  disabled={!isMulticastClassB || props.disabled}
+                  options={[
+                    { value: 0, label: "Every second" },
+                    { value: 1, label: "Every 2 seconds" },
+                    { value: 2, label: "Every 4 seconds" },
+                    { value: 3, label: "Every 8 seconds" },
+                    { value: 4, label: "Every 16 seconds" },
+                    { value: 5, label: "Every 32 seconds" },
+                    { value: 6, label: "Every 64 seconds" },
+                    { value: 7, label: "Every 128 seconds" },
+                  ]}
+                />
               </Form.Item>
             </Col>
             <Col span={8}>
@@ -218,10 +222,13 @@ function FuotaDeploymentForm(props: IProps) {
                 name="multicastClassCSchedulingType"
                 tooltip="In order to reach all devices, it might be needed to transmit a downlink through multiple gateways. In case of Delay each gateway will transmit one by one, in case of GPS Time all required gateways will transmit at the same GPS time."
               >
-                <Select disabled={isMulticastClassB || props.disabled}>
-                  <Select.Option value={MulticastGroupSchedulingType.DELAY}>Delay</Select.Option>
-                  <Select.Option value={MulticastGroupSchedulingType.GPS_TIME}>GPS Time</Select.Option>
-                </Select>
+                <Select
+                  disabled={isMulticastClassB || props.disabled}
+                  options={[
+                    { value: MulticastGroupSchedulingType.DELAY, label: "Delay" },
+                    { value: MulticastGroupSchedulingType.GPS_TIME, label: "GPS Time" },
+                  ]}
+                />
               </Form.Item>
             </Col>
           </Row>
@@ -233,7 +240,7 @@ function FuotaDeploymentForm(props: IProps) {
                 rules={[{ required: true, message: "Please enter a multicast data-rate!" }]}
                 tooltip="The data-rate to use when transmitting the multicast frames. Please refer to the LoRaWAN Regional Parameters specification for valid values."
               >
-                <InputNumber min={0} max={15} disabled={props.disabled} style={{ width: "100%" }} addonBefore="DR" />
+                <InputNumber min={0} max={15} disabled={props.disabled} style={{ width: "100%" }} prefix="DR" />
               </Form.Item>
             </Col>
             <Col span={8}>
@@ -243,12 +250,12 @@ function FuotaDeploymentForm(props: IProps) {
                 tooltip="The frequency to use when transmitting the multicast frames. Please refer to the LoRaWAN Regional Parameters specification for valid values."
                 rules={[{ required: true, message: "Please enter a frequency!" }]}
               >
-                <InputNumber min={0} disabled={props.disabled} style={{ width: "100%" }} addonAfter="Hz" />
+                <InputNumber min={0} disabled={props.disabled} style={{ width: "100%" }} suffix="Hz" />
               </Form.Item>
             </Col>
             <Col span={8}>
               <Form.Item label="Fragmentation redundancy (%)" name="fragmentationRedundancyPercentage">
-                <InputNumber min={0} max={100} addonAfter="%" style={{ width: "100%" }} disabled={props.disabled} />
+                <InputNumber min={0} max={100} suffix="%" style={{ width: "100%" }} disabled={props.disabled} />
               </Form.Item>
             </Col>
           </Row>
@@ -259,15 +266,17 @@ function FuotaDeploymentForm(props: IProps) {
                 name="requestFragmentationSessionStatus"
                 tooltip="After fragment enqueue is recommended for Class-A devices, after session timeout is recommended for Class-B / Class-C devices."
               >
-                <Select disabled={props.disabled}>
-                  <Select.Option value={RequestFragmentationSessionStatus.NO_REQUEST}>Do not request</Select.Option>
-                  <Select.Option value={RequestFragmentationSessionStatus.AFTER_FRAGMENT_ENQUEUE}>
-                    After fragment enqueue
-                  </Select.Option>
-                  <Select.Option value={RequestFragmentationSessionStatus.AFTER_SESSION_TIMEOUT}>
-                    After session timeout
-                  </Select.Option>
-                </Select>
+                <Select
+                  disabled={props.disabled}
+                  options={[
+                    { value: RequestFragmentationSessionStatus.NO_REQUEST, label: "Do not request" },
+                    {
+                      value: RequestFragmentationSessionStatus.AFTER_FRAGMENT_ENQUEUE,
+                      label: "After fragment enqueue",
+                    },
+                    { value: RequestFragmentationSessionStatus.AFTER_SESSION_TIMEOUT, label: "After session timeout" },
+                  ]}
+                />
               </Form.Item>
             </Col>
           </Row>
@@ -284,44 +293,50 @@ function FuotaDeploymentForm(props: IProps) {
             <Col span={6}>
               <Form.Item label="Multicast timeout" name="multicastTimeout">
                 {isMulticastClassB && (
-                  <Select disabled={props.disabled || calculateMulticastTimeout}>
-                    <Select.Option value={0}>1 beacon period</Select.Option>
-                    <Select.Option value={1}>2 beacon periods</Select.Option>
-                    <Select.Option value={2}>4 beacon periods</Select.Option>
-                    <Select.Option value={3}>8 beacon periods</Select.Option>
-                    <Select.Option value={4}>16 beacon periods</Select.Option>
-                    <Select.Option value={5}>32 beacon periods</Select.Option>
-                    <Select.Option value={6}>64 beacon periods</Select.Option>
-                    <Select.Option value={7}>128 beacon periods</Select.Option>
-                    <Select.Option value={8}>256 beacon periods</Select.Option>
-                    <Select.Option value={9}>512 beacon periods</Select.Option>
-                    <Select.Option value={10}>1024 beacon periods</Select.Option>
-                    <Select.Option value={11}>2048 beacon periods</Select.Option>
-                    <Select.Option value={12}>4096 beacon periods</Select.Option>
-                    <Select.Option value={13}>8192 beacon periods</Select.Option>
-                    <Select.Option value={14}>16384 beacon periods</Select.Option>
-                    <Select.Option value={15}>32768 beacon periods</Select.Option>
-                  </Select>
+                  <Select
+                    disabled={props.disabled || calculateMulticastTimeout}
+                    options={[
+                      { value: 0, label: "1 beacon period" },
+                      { value: 1, label: "2 beacon periods" },
+                      { value: 2, label: "4 beacon periods" },
+                      { value: 3, label: "8 beacon periods" },
+                      { value: 4, label: "16 beacon periods" },
+                      { value: 5, label: "32 beacon periods" },
+                      { value: 6, label: "64 beacon periods" },
+                      { value: 7, label: "128 beacon periods" },
+                      { value: 8, label: "256 beacon periods" },
+                      { value: 9, label: "512 beacon periods" },
+                      { value: 10, label: "1024 beacon periods" },
+                      { value: 11, label: "2048 beacon periods" },
+                      { value: 12, label: "4096 beacon periods" },
+                      { value: 13, label: "8192 beacon periods" },
+                      { value: 14, label: "16384 beacon periods" },
+                      { value: 15, label: "32768 beacon periods" },
+                    ]}
+                  />
                 )}
                 {!isMulticastClassB && (
-                  <Select disabled={props.disabled || calculateMulticastTimeout}>
-                    <Select.Option value={0}>1 second</Select.Option>
-                    <Select.Option value={1}>2 seconds</Select.Option>
-                    <Select.Option value={2}>4 seconds</Select.Option>
-                    <Select.Option value={3}>8 seconds</Select.Option>
-                    <Select.Option value={4}>16 seconds</Select.Option>
-                    <Select.Option value={5}>32 seconds</Select.Option>
-                    <Select.Option value={6}>64 seconds</Select.Option>
-                    <Select.Option value={7}>128 seconds</Select.Option>
-                    <Select.Option value={8}>256 seconds</Select.Option>
-                    <Select.Option value={9}>512 seconds</Select.Option>
-                    <Select.Option value={10}>1024 seconds</Select.Option>
-                    <Select.Option value={11}>2048 seconds</Select.Option>
-                    <Select.Option value={12}>4096 seconds</Select.Option>
-                    <Select.Option value={13}>8192 seconds</Select.Option>
-                    <Select.Option value={14}>16384 seconds</Select.Option>
-                    <Select.Option value={15}>32768 seconds</Select.Option>
-                  </Select>
+                  <Select
+                    disabled={props.disabled || calculateMulticastTimeout}
+                    options={[
+                      { value: 0, label: "1 second" },
+                      { value: 1, label: "2 seconds" },
+                      { value: 2, label: "4 seconds" },
+                      { value: 3, label: "8 seconds" },
+                      { value: 4, label: "16 seconds" },
+                      { value: 5, label: "32 seconds" },
+                      { value: 6, label: "64 seconds" },
+                      { value: 7, label: "128 seconds" },
+                      { value: 8, label: "256 seconds" },
+                      { value: 9, label: "512 seconds" },
+                      { value: 10, label: "1024 seconds" },
+                      { value: 11, label: "2048 seconds" },
+                      { value: 12, label: "4096 seconds" },
+                      { value: 13, label: "8192 seconds" },
+                      { value: 14, label: "16384 seconds" },
+                      { value: 15, label: "32768 seconds" },
+                    ]}
+                  />
                 )}
               </Form.Item>
             </Col>
@@ -341,7 +356,7 @@ function FuotaDeploymentForm(props: IProps) {
                   max={255}
                   disabled={props.disabled || calculateFragmentationFragmentSize}
                   style={{ width: "100%" }}
-                  addonAfter="Bytes"
+                  suffix="Bytes"
                 />
               </Form.Item>
             </Col>
@@ -359,48 +374,62 @@ function FuotaDeploymentForm(props: IProps) {
               </Button>
             </Upload>
           </Form.Item>
-        </Tabs.TabPane>
-        <Tabs.TabPane tab="Set device tags (on complete)" key="2">
-          <Form.List name="onCompleteSetDeviceTagsMap">
-            {(fields, { add, remove }) => (
-              <>
-                {fields.map(({ key, name, ...restField }) => (
-                  <Row gutter={24}>
-                    <Col span={6}>
-                      <Form.Item
-                        {...restField}
-                        name={[name, 0]}
-                        fieldKey={[name, 0]}
-                        rules={[{ required: true, message: "Please enter a key!" }]}
-                      >
-                        <Input placeholder="Key" />
-                      </Form.Item>
-                    </Col>
-                    <Col span={16}>
-                      <Form.Item
-                        {...restField}
-                        name={[name, 1]}
-                        fieldKey={[name, 1]}
-                        rules={[{ required: true, message: "Please enter a value!" }]}
-                      >
-                        <Input placeholder="Value" />
-                      </Form.Item>
-                    </Col>
-                    <Col span={2}>
-                      <MinusCircleOutlined onClick={() => remove(name)} />
-                    </Col>
-                  </Row>
-                ))}
-                <Form.Item>
-                  <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
-                    Add tag
-                  </Button>
-                </Form.Item>
-              </>
-            )}
-          </Form.List>
-        </Tabs.TabPane>
-      </Tabs>
+        </>
+      ),
+    },
+    {
+      key: "2",
+      label: "Set device tags (on clomplete)",
+      children: (
+        <Form.List name="onCompleteSetDeviceTagsMap">
+          {(fields, { add, remove }) => (
+            <>
+              {fields.map(({ key, name, ...restField }) => (
+                <Row gutter={24} key={key}>
+                  <Col span={6}>
+                    <Form.Item
+                      {...restField}
+                      name={[name, 0]}
+                      rules={[{ required: true, message: "Please enter a key!" }]}
+                    >
+                      <Input placeholder="Key" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={16}>
+                    <Form.Item
+                      {...restField}
+                      name={[name, 1]}
+                      rules={[{ required: true, message: "Please enter a value!" }]}
+                    >
+                      <Input placeholder="Value" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={2}>
+                    <MinusCircleOutlined onClick={() => remove(name)} />
+                  </Col>
+                </Row>
+              ))}
+              <Form.Item>
+                <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+                  Add tag
+                </Button>
+              </Form.Item>
+            </>
+          )}
+        </Form.List>
+      ),
+    },
+  ];
+
+  return (
+    <Form
+      layout="vertical"
+      initialValues={props.initialValues.toObject()}
+      onFinish={onFinish}
+      onFinishFailed={onFinishFailed}
+      form={form}
+    >
+      <Tabs items={tabItems} />
       <Form.Item>
         <Button type="primary" htmlType="submit" disabled={props.disabled}>
           Submit

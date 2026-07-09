@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { Route, Routes, useParams, Link, useNavigate, useLocation } from "react-router-dom";
 
 import { Space, Breadcrumb, Card, Button, Menu } from "antd";
-import { PageHeader } from "@ant-design/pro-layout";
 
 import type { Tenant } from "@chirpstack/chirpstack-api-grpc-web/api/tenant_pb";
 import type { Application } from "@chirpstack/chirpstack-api-grpc-web/api/application_pb";
@@ -17,6 +16,7 @@ import { GetDeviceRequest, DeleteDeviceRequest } from "@chirpstack/chirpstack-ap
 import DeviceStore from "../../stores/DeviceStore";
 import DeviceProfileStore from "../../stores/DeviceProfileStore";
 import DeleteConfirm from "../../components/DeleteConfirm";
+import PageHeader from "../../components/PageHeader";
 import Admin from "../../components/Admin";
 
 import DeviceDashboard from "./DeviceDashboard";
@@ -118,44 +118,34 @@ function DeviceLayout(props: IProps) {
   }
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size="large">
+    <Space orientation="vertical" style={{ width: "100%" }} size="large">
       <PageHeader
         breadcrumbRender={() => (
-          <Breadcrumb>
-            <Breadcrumb.Item>
-              <span>Tenants</span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${props.tenant.getId()}`}>{props.tenant.getName()}</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${props.tenant.getId()}/applications`}>Applications</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${props.tenant.getId()}/applications/${props.application.getId()}`}>
-                  {props.application.getName()}
-                </Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${props.tenant.getId()}/applications/${props.application.getId()}`}>Devices</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>{device.getName()}</span>
-            </Breadcrumb.Item>
-          </Breadcrumb>
+          <Breadcrumb
+            items={[
+              { title: "Tenants" },
+              { title: <Link to={`/tenants/${props.tenant.getId()}`}>{props.tenant.getName()}</Link> },
+              { title: <Link to={`/tenants/${props.tenant.getId()}/applications`}>Applications</Link> },
+              {
+                title: (
+                  <Link to={`/tenants/${props.tenant.getId()}/applications/${props.application.getId()}`}>
+                    {props.application.getName()}
+                  </Link>
+                ),
+              },
+              {
+                title: (
+                  <Link to={`/tenants/${props.tenant.getId()}/applications/${props.application.getId()}`}>Devices</Link>
+                ),
+              },
+              { title: device.getName() },
+            ]}
+          />
         )}
         title={device.getName()}
         subTitle={`device eui: ${device.getDevEui()}`}
         extra={[
-          <Admin tenantId={props.tenant.getId()} isDeviceAdmin>
+          <Admin tenantId={props.tenant.getId()} isDeviceAdmin key="delete-device">
             <DeleteConfirm typ="device" confirm={device.getName()} onConfirm={deleteDevice}>
               <Button danger type="primary">
                 Delete device
@@ -165,45 +155,76 @@ function DeviceLayout(props: IProps) {
         ]}
       />
       <Card>
-        <Menu mode="horizontal" selectedKeys={[tab]} style={{ marginBottom: 24 }}>
-          <Menu.Item key="dashboard">
-            <Link to={`/tenants/${tenant.getId()}/applications/${app.getId()}/devices/${device.getDevEui()}`}>
-              Dashboard
-            </Link>
-          </Menu.Item>
-          <Menu.Item key="edit">
-            <Link to={`/tenants/${tenant.getId()}/applications/${app.getId()}/devices/${device.getDevEui()}/edit`}>
-              Configuration
-            </Link>
-          </Menu.Item>
-          <Menu.Item key="keys" disabled={!dp.getSupportsOtaa()}>
-            <Link to={`/tenants/${tenant.getId()}/applications/${app.getId()}/devices/${device.getDevEui()}/keys`}>
-              OTAA keys
-            </Link>
-          </Menu.Item>
-          <Menu.Item key="activation">
-            <Link
-              to={`/tenants/${tenant.getId()}/applications/${app.getId()}/devices/${device.getDevEui()}/activation`}
-            >
-              Activation
-            </Link>
-          </Menu.Item>
-          <Menu.Item key="queue">
-            <Link to={`/tenants/${tenant.getId()}/applications/${app.getId()}/devices/${device.getDevEui()}/queue`}>
-              Queue
-            </Link>
-          </Menu.Item>
-          <Menu.Item key="events">
-            <Link to={`/tenants/${tenant.getId()}/applications/${app.getId()}/devices/${device.getDevEui()}/events`}>
-              Events
-            </Link>
-          </Menu.Item>
-          <Menu.Item key="frames">
-            <Link to={`/tenants/${tenant.getId()}/applications/${app.getId()}/devices/${device.getDevEui()}/frames`}>
-              LoRaWAN frames
-            </Link>
-          </Menu.Item>
-        </Menu>
+        <Menu
+          mode="horizontal"
+          selectedKeys={[tab]}
+          style={{ marginBottom: 24 }}
+          items={[
+            {
+              key: "dashboard",
+              label: (
+                <Link to={`/tenants/${tenant.getId()}/applications/${app.getId()}/devices/${device.getDevEui()}`}>
+                  Dashboard
+                </Link>
+              ),
+            },
+            {
+              key: "edit",
+              label: (
+                <Link to={`/tenants/${tenant.getId()}/applications/${app.getId()}/devices/${device.getDevEui()}/edit`}>
+                  Configuration
+                </Link>
+              ),
+            },
+            {
+              key: "keys",
+              disabled: !dp.getSupportsOtaa(),
+              label: (
+                <Link to={`/tenants/${tenant.getId()}/applications/${app.getId()}/devices/${device.getDevEui()}/keys`}>
+                  OTAA keys
+                </Link>
+              ),
+            },
+            {
+              key: "activation",
+              label: (
+                <Link
+                  to={`/tenants/${tenant.getId()}/applications/${app.getId()}/devices/${device.getDevEui()}/activation`}
+                >
+                  Activation
+                </Link>
+              ),
+            },
+            {
+              key: "queue",
+              label: (
+                <Link to={`/tenants/${tenant.getId()}/applications/${app.getId()}/devices/${device.getDevEui()}/queue`}>
+                  Queue
+                </Link>
+              ),
+            },
+            {
+              key: "events",
+              label: (
+                <Link
+                  to={`/tenants/${tenant.getId()}/applications/${app.getId()}/devices/${device.getDevEui()}/events`}
+                >
+                  Events
+                </Link>
+              ),
+            },
+            {
+              key: "frames",
+              label: (
+                <Link
+                  to={`/tenants/${tenant.getId()}/applications/${app.getId()}/devices/${device.getDevEui()}/frames`}
+                >
+                  LoRaWAN frames
+                </Link>
+              ),
+            },
+          ]}
+        />
         <Routes>
           <Route path="/" element={<DeviceDashboard device={device} lastSeenAt={lastSeenAt} deviceProfile={dp} />} />
           <Route path="/edit" element={<EditDevice device={device} application={app} tenant={tenant} />} />

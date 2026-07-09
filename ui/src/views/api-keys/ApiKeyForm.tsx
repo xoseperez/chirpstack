@@ -1,4 +1,4 @@
-import { Form, Input, Button } from "antd";
+import { Form, Input, Button, Switch } from "antd";
 
 import { ApiKey } from "@chirpstack/chirpstack-api-grpc-web/api/internal_pb";
 
@@ -13,6 +13,7 @@ function ApiKeyForm(props: IProps) {
   const onFinish = (values: ApiKey.AsObject) => {
     const apiKey = new ApiKey();
     apiKey.setName(values.name);
+    apiKey.setIsReadOnly(values.isReadOnly);
     props.onFinish(apiKey);
   };
 
@@ -25,6 +26,9 @@ function ApiKeyForm(props: IProps) {
     >
       <Form.Item label="Name" name="name" rules={[{ required: true, message: "Please enter a name!" }]}>
         <Input />
+      </Form.Item>
+      <Form.Item label="Read only" name="isReadOnly">
+        <Switch />
       </Form.Item>
       <Form.Item>
         <Button type="primary" htmlType="submit">

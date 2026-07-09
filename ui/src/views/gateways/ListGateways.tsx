@@ -2,22 +2,24 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 
 import { format } from "date-fns";
-import { Space, Breadcrumb, Button, Badge, Menu, Modal, TreeSelect, Dropdown } from "antd";
+import { Space, Breadcrumb, Button, Badge, MenuProps, Modal, TreeSelect, TreeSelectProps, Dropdown } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { PageHeader } from "@ant-design/pro-layout";
 
 import type { ListGatewaysResponse, GatewayListItem } from "@chirpstack/chirpstack-api-grpc-web/api/gateway_pb";
 import { ListGatewaysRequest, GatewayState } from "@chirpstack/chirpstack-api-grpc-web/api/gateway_pb";
-import type { ListApplicationsResponse } from "@chirpstack/chirpstack-api-grpc-web/api/application_pb";
-import { ListApplicationsRequest } from "@chirpstack/chirpstack-api-grpc-web/api/application_pb";
-import type { ListMulticastGroupsResponse } from "@chirpstack/chirpstack-api-grpc-web/api/multicast_group_pb";
+import type {
+  ListMulticastGroupsResponse,
+  MulticastGroupListItem,
+} from "@chirpstack/chirpstack-api-grpc-web/api/multicast_group_pb";
 import {
   ListMulticastGroupsRequest,
   AddGatewayToMulticastGroupRequest,
 } from "@chirpstack/chirpstack-api-grpc-web/api/multicast_group_pb";
-import type { ListFuotaDeploymentsResponse } from "@chirpstack/chirpstack-api-grpc-web/api/fuota_pb";
+import type {
+  ListFuotaDeploymentsResponse,
+  FuotaDeploymentListItem,
+} from "@chirpstack/chirpstack-api-grpc-web/api/fuota_pb";
 import {
-  ListFuotaDeploymentDevicesRequest,
   AddGatewaysToFuotaDeploymentRequest,
   ListFuotaDeploymentsRequest,
 } from "@chirpstack/chirpstack-api-grpc-web/api/fuota_pb";
@@ -26,34 +28,20 @@ import type { Tenant } from "@chirpstack/chirpstack-api-grpc-web/api/tenant_pb";
 import type { GetPageCallbackFunc } from "../../components/DataTable";
 import DataTable from "../../components/DataTable";
 import GatewayStore from "../../stores/GatewayStore";
-import ApplicationStore from "../../stores/ApplicationStore";
 import MulticastGroupStore from "../../stores/MulticastGroupStore";
 import FuotaStore from "../../stores/FuotaStore";
 import Admin from "../../components/Admin";
 import { useTitle } from "../helpers";
+import PageHeader from "../../components/PageHeader";
 
 interface IProps {
   tenant: Tenant;
 }
 
-interface MulticastGroup {
-  title: string;
-  value: string;
-  disabled: boolean;
-  children: { title: string; value: string }[];
-}
-
-interface FuotaDeployment {
-  title: string;
-  value: string;
-  disabled: boolean;
-  children: { title: string; value: string }[];
-}
-
 function ListGateways(props: IProps) {
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
-  const [multicastGroups, setMulticastGroups] = useState<MulticastGroup[]>([]);
-  const [fuotaDeployments, setFuotaDeployments] = useState<FuotaDeployment[]>([]);
+  const [multicastGroups, setMulticastGroups] = useState<TreeSelectProps["treeData"]>([]);
+  const [fuotaDeployments, setFuotaDeployments] = useState<TreeSelectProps["treeData"]>([]);
   const [mgModalVisible, setMgModalVisible] = useState<boolean>(false);
   const [fuotaModalVisible, setFuotaModalVisible] = useState<boolean>(false);
   const [mgSelected, setMgSelected] = useState<string>("");
@@ -134,56 +122,85 @@ function ListGateways(props: IProps) {
         return "";
       },
     },
+    {
+      title: "Downlink priority",
+      dataIndex: "downlinkPriority",
+      key: "downlinkPriority",
+      width: 250,
+    },
   ];
 
   useEffect(() => {
-    const req = new ListApplicationsRequest();
-    req.setLimit(999);
-    req.setTenantId(props.tenant.getId());
-
-    let mgGroups: MulticastGroup[] = [];
-    let fDeployments: FuotaDeployment[] = [];
-
-    ApplicationStore.list(req, (resp: ListApplicationsResponse) => {
-      for (const app of resp.getResultList()) {
-        const mgReq = new ListMulticastGroupsRequest();
-        mgReq.setLimit(999);
-        mgReq.setApplicationId(app.getId());
-        MulticastGroupStore.list(mgReq, (resp: ListMulticastGroupsResponse) => {
-          mgGroups.push({
-            title: app.getName(),
-            value: "",
-            disabled: true,
-            children: resp.getResultList().map((mg, i) => ({
-              title: mg.getName(),
-              value: mg.getId(),
-            })),
-          });
-
-          // The above can also be done using setMulticastGroups and a callback
-          // function, but this introduces a race-condition when executed twice.
-          setMulticastGroups(mgGroups);
-        });
-
-        const fuotaReq = new ListFuotaDeploymentsRequest();
-        fuotaReq.setLimit(999);
-        fuotaReq.setApplicationId(app.getId());
-        FuotaStore.listDeployments(fuotaReq, (resp: ListFuotaDeploymentsResponse) => {
-          fDeployments.push({
-            title: app.getName(),
-            value: "",
-            disabled: true,
-            children: resp.getResultList().map((mg, i) => ({
-              title: mg.getName(),
-              value: mg.getId(),
-            })),
-          });
-
-          // The above can also be done using setFuotaDeployments and a callback
-          // function, but this introduces a race-condition when executed twice.
-          setFuotaDeployments(fDeployments);
-        });
+    const mgReq = new ListMulticastGroupsRequest();
+    mgReq.setLimit(999);
+    mgReq.setTenantId(props.tenant.getId());
+    MulticastGroupStore.list(mgReq, (resp: ListMulticastGroupsResponse) => {
+      interface McGrouped {
+        [key: string]: MulticastGroupListItem[];
       }
+      let mgGrouped: McGrouped = {};
+
+      for (const mg of resp.getResultList()) {
+        if (mgGrouped[mg.getApplicationName()]) {
+          mgGrouped[mg.getApplicationName()].push(mg);
+        } else {
+          mgGrouped[mg.getApplicationName()] = [mg];
+        }
+      }
+
+      let mgGroups: TreeSelectProps["treeData"] = [];
+      const sortedKeys = Object.keys(mgGrouped).sort();
+      sortedKeys.forEach(key => {
+        mgGroups.push({
+          value: key,
+          title: key,
+          disabled: true,
+          children: mgGrouped[key].map(mg => ({
+            title: mg.getName(),
+            value: mg.getId(),
+            disabled: false,
+            children: [],
+          })),
+        });
+      });
+
+      setMulticastGroups(mgGroups);
+    });
+
+    const fuotaReq = new ListFuotaDeploymentsRequest();
+    fuotaReq.setLimit(999);
+    fuotaReq.setTenantId(props.tenant.getId());
+    FuotaStore.listDeployments(fuotaReq, (resp: ListFuotaDeploymentsResponse) => {
+      interface FuotaGrouped {
+        [key: string]: FuotaDeploymentListItem[];
+      }
+      let fuotaGrouped: FuotaGrouped = {};
+
+      for (const fd of resp.getResultList()) {
+        if (fuotaGrouped[fd.getApplicationName()]) {
+          fuotaGrouped[fd.getApplicationName()].push(fd);
+        } else {
+          fuotaGrouped[fd.getApplicationName()] = [fd];
+        }
+      }
+
+      let fuotaDeployments: TreeSelectProps["treeData"] = [];
+      const sortedKeys = Object.keys(fuotaGrouped).sort();
+      sortedKeys.forEach(key => {
+        fuotaDeployments.push({
+          value: key,
+          title: key,
+          disabled: true,
+          children: fuotaGrouped[key].map(fd => ({
+            title: fd.getName(),
+            value: fd.getId(),
+            disabled: false,
+            children: [],
+          })),
+        });
+      });
+
+      setFuotaDeployments(fuotaDeployments);
     });
   }, [props.tenant]);
 
@@ -245,19 +262,15 @@ function ListGateways(props: IProps) {
     });
   };
 
-  const menu = (
-    <Menu>
-      <Menu.Item key="mg" onClick={() => setMgModalVisible(true)}>
-        Add to multicast-group
-      </Menu.Item>
-      <Menu.Item key="fuota" onClick={() => setFuotaModalVisible(true)}>
-        Add to FUOTA deployment
-      </Menu.Item>
-    </Menu>
-  );
+  const menu: MenuProps = {
+    items: [
+      { key: "mg", label: "Add to multicast group", onClick: () => setMgModalVisible(true) },
+      { key: "fuota", label: "Add to FUOTA deployment", onClick: () => setFuotaModalVisible(true) },
+    ],
+  };
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size="large">
+    <Space orientation="vertical" style={{ width: "100%" }} size="large">
       <Modal
         title="Add selected gateways to multicast-group"
         open={mgModalVisible}
@@ -265,7 +278,7 @@ function ListGateways(props: IProps) {
         onCancel={() => setMgModalVisible(false)}
         okButtonProps={{ disabled: mgSelected === "" }}
       >
-        <Space direction="vertical" size="large" style={{ width: "100%" }}>
+        <Space orientation="vertical" size="large" style={{ width: "100%" }}>
           <TreeSelect
             style={{ width: "100%" }}
             placeholder="Select multicast-group"
@@ -282,7 +295,7 @@ function ListGateways(props: IProps) {
         onCancel={() => setFuotaModalVisible(false)}
         okButtonProps={{ disabled: fuotaDeploymentSelected === "" }}
       >
-        <Space direction="vertical" size="large" style={{ width: "100%" }}>
+        <Space orientation="vertical" size="large" style={{ width: "100%" }}>
           <TreeSelect
             style={{ width: "100%" }}
             placeholder="Select FUOTA deployment"
@@ -295,32 +308,21 @@ function ListGateways(props: IProps) {
       <PageHeader
         title="Gateways"
         breadcrumbRender={() => (
-          <Breadcrumb>
-            <Breadcrumb.Item>
-              <span>Tenants</span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${props.tenant.getId()}`}>{props.tenant.getName()}</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>Gateways</span>
-            </Breadcrumb.Item>
-          </Breadcrumb>
+          <Breadcrumb
+            items={[
+              { title: "Tenants" },
+              { title: <Link to={`/tenants/${props.tenant.getId()}`}>{props.tenant.getName()}</Link> },
+              { title: "Gateways" },
+            ]}
+          />
         )}
         extra={[
-          <Admin tenantId={props.tenant.getId()} isGatewayAdmin>
-            <Space direction="horizontal" style={{ float: "right" }}>
+          <Admin tenantId={props.tenant.getId()} isGatewayAdmin key="add-gateway">
+            <Space orientation="horizontal" style={{ float: "right" }}>
               <Button type="primary">
                 <Link to={`/tenants/${props.tenant.getId()}/gateways/create`}>Add gateway</Link>
               </Button>
-              <Dropdown
-                placement="bottomRight"
-                overlay={menu}
-                trigger={["click"]}
-                disabled={selectedRowIds.length === 0}
-              >
+              <Dropdown placement="bottomRight" menu={menu} trigger={["click"]} disabled={selectedRowIds.length === 0}>
                 <Button>Selected gateways</Button>
               </Dropdown>
             </Space>

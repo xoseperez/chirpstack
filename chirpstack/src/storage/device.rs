@@ -5,7 +5,7 @@ use std::str::FromStr;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Utc};
 use diesel::{backend::Backend, deserialize, dsl, prelude::*, serialize, sql_types::Text};
-use diesel_async::RunQueryDsl;
+use diesel_async::{AsyncConnection, RunQueryDsl};
 use tracing::info;
 use uuid::Uuid;
 
@@ -13,7 +13,7 @@ use chirpstack_api::internal;
 use lrwn::{DevAddr, EUI64};
 
 use super::schema::{application, device, device_profile, multicast_group_device, tenant};
-use super::{db_transaction, error::Error, fields, get_async_db_conn};
+use super::{error::Error, fields, get_async_db_conn};
 use crate::api::helpers::FromProto;
 use crate::config;
 
@@ -252,22 +252,10 @@ pub struct DevicesDataRate {
 
 pub async fn create(d: Device) -> Result<Device, Error> {
     let mut c = get_async_db_conn().await?;
-    let d: Device = db_transaction::<Device, Error, _>(&mut c, |c| {
-        Box::pin(async move {
+    let d: Device = c
+        .transaction::<Device, Error, _>(async |c| {
             let query = tenant::dsl::tenant
-                .select((
-                    tenant::dsl::id,
-                    tenant::dsl::created_at,
-                    tenant::dsl::updated_at,
-                    tenant::dsl::name,
-                    tenant::dsl::description,
-                    tenant::dsl::can_have_gateways,
-                    tenant::dsl::max_device_count,
-                    tenant::dsl::max_gateway_count,
-                    tenant::dsl::private_gateways_up,
-                    tenant::dsl::private_gateways_down,
-                    tenant::dsl::tags,
-                ))
+                .select(tenant::all_columns)
                 .inner_join(application::table)
                 .filter(application::dsl::id.eq(&d.application_id));
             // use for update to lock the tenant
@@ -294,8 +282,7 @@ pub async fn create(d: Device) -> Result<Device, Error> {
                 .await
                 .map_err(|e| Error::from_diesel(e, d.dev_eui.to_string()))
         })
-    })
-    .await?;
+        .await?;
     info!(dev_eui = %d.dev_eui, "Device created");
     Ok(d)
 }
@@ -424,14 +411,15 @@ pub async fn get_for_phypayload_and_incr_f_cnt_up(
                     0
                 };
 
-                if let Some(relay) = &ds.relay {
-                    if !relayed && relay.ed_relay_only {
-                        info!(
-                            dev_eui = %d.dev_eui,
-                            "Only communication through relay is allowed"
-                        );
-                        return Err(Error::NotFound(dev_addr.to_string()));
-                    }
+                if let Some(relay) = &ds.relay
+                    && !relayed
+                    && relay.ed_relay_only
+                {
+                    info!(
+                        dev_eui = %d.dev_eui,
+                        "Only communication through relay is allowed"
+                    );
+                    return Err(Error::NotFound(dev_addr.to_string()));
                 }
 
                 // Update DevAddr in case of context switch + reset frame-counter.
@@ -578,7 +566,7 @@ pub async fn get_for_phypayload(
                 )
                 .context("Validate MIC")?;
 
-            if mic_ok && full_f_cnt >= d.f_cnt_up as u32 {
+            if mic_ok {
                 return Ok(d.clone());
             }
 
@@ -816,8 +804,10 @@ pub async fn get_active_inactive(tenant_id: &Option<Uuid>) -> Result<DevicesActi
                 device d
             inner join device_profile dp
                 on d.device_profile_id = dp.id
+            inner join application a
+                on d.application_id = a.id
             where
-                $1 is null or dp.tenant_id = $1
+                $1 is null or a.tenant_id = $1
         )
         select
             coalesce(sum(case when last_seen_at is null then 1 end), 0) as never_seen_count,
@@ -844,8 +834,10 @@ pub async fn get_active_inactive(tenant_id: &Option<Uuid>) -> Result<DevicesActi
                 device d
             inner join device_profile dp
                 on d.device_profile_id = dp.id
+            inner join application a
+                on d.application_id = a.id
             where
-                ?1 is null or dp.tenant_id = ?1
+                ?1 is null or a.tenant_id = ?1
         )
         select
             coalesce(sum(case when last_seen_at is null then 1 end), 0) as never_seen_count,
@@ -864,19 +856,18 @@ pub async fn get_active_inactive(tenant_id: &Option<Uuid>) -> Result<DevicesActi
 }
 
 pub async fn get_data_rates(tenant_id: &Option<Uuid>) -> Result<Vec<DevicesDataRate>, Error> {
-    let mut q = device::dsl::device
-        .inner_join(device_profile::table)
-        //.select((device::dr, dsl::count_star()))
+    let mut q = device::table
+        .inner_join(application::table)
         .select((
             device::dr,
             diesel::dsl::sql::<diesel::sql_types::BigInt>("count(1)"),
         ))
         .group_by(device::dr)
-        .filter(device::dsl::dr.is_not_null())
+        .filter(device::dr.is_not_null())
         .into_boxed();
 
     if let Some(id) = &tenant_id {
-        q = q.filter(device_profile::dsl::tenant_id.eq(fields::Uuid::from(id)));
+        q = q.filter(application::tenant_id.eq(fields::Uuid::from(id)));
     }
 
     q.load(&mut get_async_db_conn().await?)
@@ -886,27 +877,26 @@ pub async fn get_data_rates(tenant_id: &Option<Uuid>) -> Result<Vec<DevicesDataR
 
 pub async fn get_with_class_b_c_queue_items(limit: usize) -> Result<Vec<Device>> {
     let mut c = get_async_db_conn().await?;
-    db_transaction::<Vec<Device>, Error, _>(&mut c, |c| {
-        Box::pin(async {
-            let conf = config::get();
+    c.transaction::<Vec<Device>, Error, _>(async |c| {
+        let conf = config::get();
 
-            // This query will:
-            //  * Select the devices for which a Class-B or Class-C downlink can be scheduled.
-            //  * Lock the device records for update with skip locked such that other
-            //    ChirpStack instances are able to do the same for the remaining devices.
-            //  * Update the scheduler_run_after for these devices to now() + 2 * scheduler
-            //    interval to avoid concurrency issues (other ChirpStack instance scheduling
-            //    the same queue items).
-            //
-            // This way, we do not have to keep the device records locked until the scheduler
-            // finishes its batch as the same set of devices will not be returned until after
-            // the updated scheduler_run_after. Only if the scheduler takes more time than 2x the
-            // interval (the scheduler is still working on processing the batch after 2 x interval)
-            // this might cause issues.
-            // The alternative would be to keep the transaction open for a long time + keep
-            // the device records locked during this time which could case issues as well.
-            diesel::sql_query(if cfg!(feature = "sqlite") {
-                r#"
+        // This query will:
+        //  * Select the devices for which a Class-B or Class-C downlink can be scheduled.
+        //  * Lock the device records for update with skip locked such that other
+        //    ChirpStack instances are able to do the same for the remaining devices.
+        //  * Update the scheduler_run_after for these devices to now() + 2 * scheduler
+        //    interval to avoid concurrency issues (other ChirpStack instance scheduling
+        //    the same queue items).
+        //
+        // This way, we do not have to keep the device records locked until the scheduler
+        // finishes its batch as the same set of devices will not be returned until after
+        // the updated scheduler_run_after. Only if the scheduler takes more time than 2x the
+        // interval (the scheduler is still working on processing the batch after 2 x interval)
+        // this might cause issues.
+        // The alternative would be to keep the transaction open for a long time + keep
+        // the device records locked during this time which could case issues as well.
+        diesel::sql_query(if cfg!(feature = "sqlite") {
+            r#"
                     update
                         device
                     set
@@ -938,8 +928,8 @@ pub async fn get_with_class_b_c_queue_items(limit: usize) -> Result<Vec<Device>>
                         )
                     returning *
                 "#
-            } else {
-                r#"
+        } else {
+            r#"
                     update
                         device
                     set
@@ -972,16 +962,16 @@ pub async fn get_with_class_b_c_queue_items(limit: usize) -> Result<Vec<Device>>
                         )
                     returning *
                 "#
-            })
-            .bind::<diesel::sql_types::Integer, _>(limit as i32)
-            .bind::<fields::sql_types::Timestamptz, _>(Utc::now())
-            .bind::<fields::sql_types::Timestamptz, _>(
-                Utc::now() + Duration::from_std(2 * conf.network.scheduler.interval).unwrap(),
-            )
-            .load(c)
-            .await
-            .map_err(|e| Error::from_diesel(e, "".into()))
         })
+        .bind::<diesel::sql_types::Integer, _>(limit as i32)
+        .bind::<fields::sql_types::Timestamptz, _>(Utc::now())
+        .bind::<fields::sql_types::Timestamptz, _>(
+            Utc::now()
+                + Duration::from_std(conf.network.scheduler.scheduler_lock_duration).unwrap(),
+        )
+        .load(c)
+        .await
+        .map_err(|e| Error::from_diesel(e, "".into()))
     })
     .await
     .context("Get with Class B/C queue-items transaction")
@@ -1008,6 +998,32 @@ fn get_full_f_cnt_up(next_expected_full_fcnt: u32, truncated_f_cnt: u32) -> u32 
         as u32;
 
     next_expected_full_fcnt.wrapping_add(gap)
+}
+
+pub async fn get_gateway_history_for_dev_euis(
+    dev_euis: &[EUI64],
+) -> Result<HashMap<EUI64, Vec<internal::GatewayRxInfoHistory>>> {
+    let items = device::table
+        .select((device::dev_eui, device::device_session))
+        .filter(
+            device::dev_eui
+                .eq_any(dev_euis)
+                .and(device::device_session.is_not_null()),
+        )
+        .load::<(EUI64, Option<fields::DeviceSession>)>(&mut get_async_db_conn().await?)
+        .await
+        .map_err(|e| Error::from_diesel(e, "".into()))?;
+
+    Ok(items
+        .into_iter()
+        .filter_map(|(dev_eui, ds)| {
+            if let Some(ds) = ds {
+                Some((dev_eui, ds.gateway_rx_info_history.clone()))
+            } else {
+                None
+            }
+        })
+        .collect())
 }
 
 #[cfg(test)]
@@ -1038,7 +1054,7 @@ pub mod test {
             let dp = storage::device_profile::get(&device_profile_id)
                 .await
                 .unwrap();
-            dp.tenant_id
+            dp.tenant_id.unwrap()
         };
 
         let application_id = match application_id {
@@ -1403,7 +1419,7 @@ pub mod test {
 
         let dp = storage::device_profile::create(storage::device_profile::DeviceProfile {
             name: "test-dp".into(),
-            tenant_id: t.id,
+            tenant_id: Some(t.id),
             ..Default::default()
         })
         .await

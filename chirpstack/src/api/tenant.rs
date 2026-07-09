@@ -1,8 +1,10 @@
+use std::ops::Deref;
 use std::str::FromStr;
 
 use chirpstack_api::api;
 use chirpstack_api::api::tenant_service_server::TenantService;
 use chirpstack_api::tonic::{self, Request, Response, Status};
+use lrwn::DevAddrPrefix;
 use uuid::Uuid;
 
 use super::auth::{AuthID, validator};
@@ -40,6 +42,15 @@ impl TenantService for Tenant {
             }
         };
 
+        // Decode prefixes
+        let mut dev_addr_prefixes = vec![];
+        for p in &req_tenant.dev_addr_prefixes {
+            let prefix = DevAddrPrefix::from_str(p).map_err(|e| {
+                Status::invalid_argument(format!("Invalid DevAddr prefix: {}, error: {}", p, e))
+            })?;
+            dev_addr_prefixes.push(Some(prefix));
+        }
+
         let t = tenant::Tenant {
             name: req_tenant.name.clone(),
             description: req_tenant.description.clone(),
@@ -49,6 +60,7 @@ impl TenantService for Tenant {
             private_gateways_up: req_tenant.private_gateways_up,
             private_gateways_down: req_tenant.private_gateways_down,
             tags: fields::KeyValue::new(req_tenant.tags.clone()),
+            dev_addr_prefixes: fields::DevAddrPrefixVec::new(dev_addr_prefixes),
             ..Default::default()
         };
 
@@ -90,6 +102,12 @@ impl TenantService for Tenant {
                 private_gateways_up: t.private_gateways_up,
                 private_gateways_down: t.private_gateways_down,
                 tags: t.tags.into_hashmap(),
+                dev_addr_prefixes: t
+                    .dev_addr_prefixes
+                    .deref()
+                    .iter()
+                    .filter_map(|v| v.map(|v| v.to_string()))
+                    .collect(),
             }),
             created_at: Some(helpers::datetime_to_prost_timestamp(&t.created_at)),
             updated_at: Some(helpers::datetime_to_prost_timestamp(&t.updated_at)),
@@ -119,6 +137,14 @@ impl TenantService for Tenant {
             )
             .await?;
 
+        let mut dev_addr_prefixes = vec![];
+        for p in &req_tenant.dev_addr_prefixes {
+            let prefix = DevAddrPrefix::from_str(p).map_err(|e| {
+                Status::invalid_argument(format!("Invalid DevAddr prefix: {}, error: {}", p, e))
+            })?;
+            dev_addr_prefixes.push(Some(prefix));
+        }
+
         // update
         let _ = tenant::update(tenant::Tenant {
             id: tenant_id.into(),
@@ -130,6 +156,7 @@ impl TenantService for Tenant {
             private_gateways_up: req_tenant.private_gateways_up,
             private_gateways_down: req_tenant.private_gateways_down,
             tags: fields::KeyValue::new(req_tenant.tags.clone()),
+            dev_addr_prefixes: fields::DevAddrPrefixVec::new(dev_addr_prefixes),
             ..Default::default()
         })
         .await
@@ -217,6 +244,44 @@ impl TenantService for Tenant {
         Ok(Response::new(api::ListTenantsResponse {
             total_count: count as u32,
             result: results
+                .iter()
+                .map(|t| api::TenantListItem {
+                    id: t.id.to_string(),
+                    created_at: Some(helpers::datetime_to_prost_timestamp(&t.created_at)),
+                    updated_at: Some(helpers::datetime_to_prost_timestamp(&t.updated_at)),
+                    name: t.name.clone(),
+                    can_have_gateways: t.can_have_gateways,
+                    private_gateways_up: t.private_gateways_up,
+                    private_gateways_down: t.private_gateways_down,
+                    max_gateway_count: t.max_gateway_count as u32,
+                    max_device_count: t.max_device_count as u32,
+                })
+                .collect(),
+        }))
+    }
+
+    async fn list_by_dev_addr_prefix_overlap(
+        &self,
+        request: Request<api::ListTenantsByDevAddrPrefixOverlapRequest>,
+    ) -> Result<Response<api::ListTenantsResponse>, Status> {
+        self.validator
+            .validate(
+                request.extensions(),
+                validator::ValidateTenantsAccess::new(validator::Flag::List),
+            )
+            .await?;
+
+        let req = request.get_ref();
+        let dev_addr_prefix =
+            lrwn::DevAddrPrefix::from_str(&req.dev_addr_prefix).map_err(|e| e.status())?;
+
+        let tenants = tenant::list_by_dev_addr_prefix_overlap(dev_addr_prefix)
+            .await
+            .map_err(|e| e.status())?;
+
+        Ok(Response::new(api::ListTenantsResponse {
+            total_count: tenants.len() as u32,
+            result: tenants
                 .iter()
                 .map(|t| api::TenantListItem {
                     id: t.id.to_string(),
@@ -380,12 +445,12 @@ impl TenantService for Tenant {
             .await?;
 
         let auth_id = request.extensions().get::<AuthID>().unwrap();
-        if let AuthID::User(id) = auth_id {
-            if id == &user_id {
-                return Err(Status::invalid_argument(
-                    "you can not delete yourself from the user",
-                ));
-            }
+        if let AuthID::User(id) = auth_id
+            && id == &user_id
+        {
+            return Err(Status::invalid_argument(
+                "you can not delete yourself from the user",
+            ));
         }
 
         tenant::delete_user(&tenant_id, &user_id)
@@ -562,6 +627,21 @@ pub mod test {
         let list_resp = service.list(list_req).await.unwrap();
         assert_eq!(1, list_resp.get_ref().total_count);
         assert_eq!(1, list_resp.get_ref().result.len());
+
+        // list by devaddr prefix overlap
+        let list_req = api::ListTenantsByDevAddrPrefixOverlapRequest {
+            dev_addr_prefix: "00000000/7".into(),
+        };
+        let mut list_req = Request::new(list_req);
+        list_req
+            .extensions_mut()
+            .insert(AuthID::User(Into::<uuid::Uuid>::into(u.id)));
+        let list_resp = service
+            .list_by_dev_addr_prefix_overlap(list_req)
+            .await
+            .unwrap();
+        assert_eq!(0, list_resp.get_ref().total_count);
+        assert_eq!(0, list_resp.get_ref().result.len());
 
         // delete
         let del_req = api::DeleteTenantRequest {

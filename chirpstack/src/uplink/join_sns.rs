@@ -208,7 +208,8 @@ impl JoinRequest {
     }
 
     fn get_random_dev_addr(&mut self) -> Result<()> {
-        self.dev_addr = Some(get_random_dev_addr());
+        let tenant = self.tenant.as_ref().unwrap();
+        self.dev_addr = Some(get_random_dev_addr(&tenant.get_dev_addr_prefixes()));
         Ok(())
     }
 
@@ -617,8 +618,8 @@ impl JoinRequest {
                     i as u32,
                     internal::DeviceSessionChannel {
                         frequency: c.frequency,
-                        min_dr: c.min_dr as u32,
-                        max_dr: c.max_dr as u32,
+                        data_rates: c.data_rates.into_iter().map(|v| v as u32).collect(),
+                        ..Default::default()
                     },
                 );
             }

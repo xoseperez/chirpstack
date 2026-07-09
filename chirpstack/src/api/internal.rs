@@ -312,6 +312,7 @@ impl InternalService for Internal {
             name: req_key.name.clone(),
             is_admin: req_key.is_admin,
             tenant_id: tenant_id.map(|u| u.into()),
+            is_read_only: req_key.is_read_only,
             ..Default::default()
         };
 
@@ -397,6 +398,7 @@ impl InternalService for Internal {
                         Some(v) => v.to_string(),
                         None => "".to_string(),
                     },
+                    is_read_only: ak.is_read_only,
                 })
                 .collect(),
         }))
@@ -957,8 +959,7 @@ impl InternalService for Internal {
             let ch = reg.get_uplink_channel(i).map_err(|e| e.status())?;
             out.uplink_channels.push(api::RegionChannel {
                 frequency: ch.frequency,
-                dr_min: ch.min_dr as u32,
-                dr_max: ch.max_dr as u32,
+                data_rates: ch.data_rates.into_iter().map(|v| v as u32).collect(),
             });
         }
 

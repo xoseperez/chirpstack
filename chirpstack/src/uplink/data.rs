@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Local, Utc};
@@ -15,7 +16,7 @@ use crate::storage::error::Error as StorageError;
 use crate::storage::{
     application,
     device::{self, DeviceClass},
-    device_gateway, device_profile, device_queue, fields,
+    device_profile, device_queue, fields,
     helpers::get_all_device_data,
     metrics, tenant,
 };
@@ -46,8 +47,8 @@ pub struct Data {
     uplink_event: Option<integration_pb::UplinkEvent>,
     must_send_downlink: bool,
     downlink_mac_commands: Vec<lrwn::MACCommandSet>,
-    device_gateway_rx_info: Option<internal::DeviceGatewayRxInfo>,
     device_changeset: device::DeviceChangeset,
+    region_conf: Option<Arc<Box<dyn lrwn::region::Region + Sync + Send>>>,
 }
 
 impl Data {
@@ -66,17 +67,10 @@ impl Data {
         }
     }
 
-    pub async fn handle_relayed(
-        relay_ctx: RelayContext,
-        dev_gw_rx_info: internal::DeviceGatewayRxInfo,
-        ufs: UplinkFrameSet,
-    ) {
+    pub async fn handle_relayed(relay_ctx: RelayContext, ufs: UplinkFrameSet) {
         let span = span!(Level::INFO, "data_up_relayed");
 
-        if let Err(e) = Data::_handle_relayed(relay_ctx, dev_gw_rx_info, ufs)
-            .instrument(span)
-            .await
-        {
+        if let Err(e) = Data::_handle_relayed(relay_ctx, ufs).instrument(span).await {
             match e.downcast_ref::<Error>() {
                 Some(Error::Abort) => {
                     // nothing to do
@@ -105,8 +99,8 @@ impl Data {
             uplink_event: None,
             must_send_downlink: false,
             downlink_mac_commands: Vec::new(),
-            device_gateway_rx_info: None,
             device_changeset: Default::default(),
+            region_conf: None,
         };
 
         if roaming::check_local_session_first() {
@@ -124,6 +118,7 @@ impl Data {
         }
 
         ctx.get_device_data().await?;
+        ctx.set_region_config()?;
         ctx.check_roaming_allowed()?;
 
         // Add dev_eui to span
@@ -136,7 +131,10 @@ impl Data {
             ctx.filter_rx_info_by_tenant().await?;
         }
         ctx.set_device_info()?;
-        ctx.set_device_gateway_rx_info()?;
+        ctx.set_region_config()?;
+        if !ctx._is_roaming() {
+            ctx.set_device_gateway_rx_info()?;
+        }
         ctx.handle_retransmission_reset().await?;
         ctx.decrypt_f_opts_mac_commands()?;
         ctx.decrypt_frm_payload()?;
@@ -145,11 +143,8 @@ impl Data {
         ctx.set_uplink_data_rate().await?;
         ctx.handle_class_b_beacon_locked().await?;
         ctx.log_uplink_meta().await?;
-        ctx.reset_channels_on_adr_ack_req()?;
+        ctx.reset_channels_on_activation_or_adr_ack_req()?;
         ctx.handle_mac_commands().await?;
-        if !ctx._is_roaming() {
-            ctx.save_device_gateway_rx_info().await?;
-        }
         ctx.append_meta_data_to_uplink_history()?;
         ctx.send_uplink_event().await?;
         if ctx._is_applayer() {
@@ -157,7 +152,6 @@ impl Data {
         }
         ctx.detect_and_save_measurements().await?;
         ctx.sync_uplink_f_cnt()?;
-        ctx.set_region_config_id()?;
         ctx.update_device().await?;
         ctx.handle_uplink_ack().await?;
         ctx.save_metrics().await?;
@@ -171,16 +165,11 @@ impl Data {
         Ok(())
     }
 
-    async fn _handle_relayed(
-        relay_ctx: RelayContext,
-        dev_gw_rx_info: internal::DeviceGatewayRxInfo,
-        ufs: UplinkFrameSet,
-    ) -> Result<()> {
+    async fn _handle_relayed(relay_ctx: RelayContext, ufs: UplinkFrameSet) -> Result<()> {
         let mut ctx = Data {
             phy_payload: *relay_ctx.req.payload.clone(),
             uplink_frame_set: ufs,
             relay_context: Some(relay_ctx),
-            device_gateway_rx_info: Some(dev_gw_rx_info),
             f_cnt_up_full: 0,
             reset: false,
             retransmission: false,
@@ -194,11 +183,14 @@ impl Data {
             must_send_downlink: false,
             downlink_mac_commands: Vec::new(),
             device_changeset: Default::default(),
+            region_conf: None,
         };
 
         ctx.get_device_for_phy_payload_relayed().await?;
         ctx.get_device_data().await?;
         ctx.set_device_info()?;
+        ctx.set_region_config()?;
+        ctx.set_device_gateway_rx_info()?;
         ctx.set_relay_rx_info()?;
         ctx.handle_retransmission_reset().await?;
         ctx.decrypt_f_opts_mac_commands()?;
@@ -206,13 +198,12 @@ impl Data {
         ctx.set_adr()?;
         ctx.set_uplink_data_rate_relayed().await?;
         ctx.handle_class_b_beacon_locked().await?;
-        ctx.reset_channels_on_adr_ack_req()?;
+        ctx.reset_channels_on_activation_or_adr_ack_req()?;
         ctx.handle_mac_commands().await?;
         ctx.append_meta_data_to_uplink_history_relayed()?;
         ctx.send_uplink_event().await?;
         ctx.detect_and_save_measurements().await?;
         ctx.sync_uplink_f_cnt()?;
-        ctx.set_region_config_id()?;
         ctx.update_device().await?;
         ctx.handle_uplink_ack().await?;
         ctx.save_metrics_relayed().await?;
@@ -379,6 +370,21 @@ impl Data {
         Ok(())
     }
 
+    fn set_region_config(&mut self) -> Result<()> {
+        trace!("Setting region_config");
+        let d = self.device.as_mut().unwrap();
+        let ds = d.get_device_session_mut()?;
+        ds.region_config_id
+            .clone_from(&self.uplink_frame_set.region_config_id);
+
+        let region_conf =
+            region::get(&ds.region_config_id).context("Get region config for region_config_id")?;
+
+        self.region_conf = Some(region_conf);
+
+        Ok(())
+    }
+
     fn check_roaming_allowed(&self) -> Result<(), Error> {
         trace!("Check if roaming is allowed for this device");
         if self._is_roaming() {
@@ -436,10 +442,8 @@ impl Data {
 
     fn set_device_gateway_rx_info(&mut self) -> Result<()> {
         trace!("Setting gateway rx-info for device");
-        let d = self.device.as_ref().unwrap();
-
-        self.device_gateway_rx_info = Some(internal::DeviceGatewayRxInfo {
-            dev_eui: d.dev_eui.to_vec(),
+        let ds = self.device.as_mut().unwrap().get_device_session_mut()?;
+        let history = internal::GatewayRxInfoHistory {
             dr: self.uplink_frame_set.dr as u32,
             items: self
                 .uplink_frame_set
@@ -448,7 +452,7 @@ impl Data {
                 .map(|rx_info| {
                     let gw_id = EUI64::from_str(&rx_info.gateway_id).unwrap_or_default();
 
-                    internal::DeviceGatewayRxInfoItem {
+                    internal::GatewayRxInfoHistoryItem {
                         gateway_id: gw_id.to_vec(),
                         rssi: rx_info.rssi,
                         lora_snr: rx_info.snr,
@@ -473,10 +477,21 @@ impl Data {
                             .get(&gw_id)
                             .map(|v| v.into_bytes().to_vec())
                             .unwrap_or_default(),
+                        gateway_downlink_priority: self
+                            .uplink_frame_set
+                            .gateway_downlink_priority_map
+                            .get(&gw_id)
+                            .cloned()
+                            .unwrap_or_default(),
                     }
                 })
                 .collect(),
-        });
+        };
+
+        ds.append_gateway_rx_info_history(
+            history,
+            config::get().gateway.device_gateway_mapping_history_uplinks,
+        );
 
         Ok(())
     }
@@ -501,10 +516,13 @@ impl Data {
                 code: integration_pb::LogCode::UplinkFCntRetransmission.into(),
                 description:
                     "Uplink was flagged as re-transmission / frame-counter did not increment".into(),
-                context: [(
-                    "deduplication_id".to_string(),
-                    self.uplink_frame_set.uplink_set_id.to_string(),
-                )]
+                context: [
+                    (
+                        "deduplication_id".to_string(),
+                        self.uplink_frame_set.uplink_set_id.to_string(),
+                    ),
+                    ("f_cnt_up".to_string(), self.f_cnt_up_full.to_string()),
+                ]
                 .iter()
                 .cloned()
                 .collect(),
@@ -519,10 +537,13 @@ impl Data {
                 level: integration_pb::LogLevel::Warning.into(),
                 code: integration_pb::LogCode::UplinkFCntReset.into(),
                 description: "Frame-counter reset or rollover detected".into(),
-                context: [(
-                    "deduplication_id".to_string(),
-                    self.uplink_frame_set.uplink_set_id.to_string(),
-                )]
+                context: [
+                    (
+                        "deduplication_id".to_string(),
+                        self.uplink_frame_set.uplink_set_id.to_string(),
+                    ),
+                    ("f_cnt_up".to_string(), self.f_cnt_up_full.to_string()),
+                ]
                 .iter()
                 .cloned()
                 .collect(),
@@ -595,11 +616,11 @@ impl Data {
                 // This avoids failing in case of a corrupted mac-command in the frm_payload.
                 warn!(error = %e.full(), "Decrypting frm_payload failed");
             }
-        } else if !self._is_end_to_end_encrypted() {
-            if let Some(app_s_key) = &ds.app_s_key {
-                let app_s_key = AES128Key::from_slice(&app_s_key.aes_key)?;
-                self.phy_payload.decrypt_frm_payload(&app_s_key)?;
-            }
+        } else if !self._is_end_to_end_encrypted()
+            && let Some(app_s_key) = &ds.app_s_key
+        {
+            let app_s_key = AES128Key::from_slice(&app_s_key.aes_key)?;
+            self.phy_payload.decrypt_frm_payload(&app_s_key)?;
         }
 
         Ok(())
@@ -679,14 +700,14 @@ impl Data {
 
         let mut enabled_class = dev.enabled_class;
 
-        if dp.supports_class_b {
-            if let lrwn::Payload::MACPayload(pl) = &self.phy_payload.payload {
-                let locked = pl.fhdr.f_ctrl.class_b;
-                enabled_class = match locked {
-                    true => DeviceClass::B,
-                    false => DeviceClass::A,
-                };
-            }
+        if dp.supports_class_b
+            && let lrwn::Payload::MACPayload(pl) = &self.phy_payload.payload
+        {
+            let locked = pl.fhdr.f_ctrl.class_b;
+            enabled_class = match locked {
+                true => DeviceClass::B,
+                false => DeviceClass::A,
+            };
         }
 
         // Update if the enabled class has changed.
@@ -742,26 +763,26 @@ impl Data {
     // this happens. This way, we make sure that the channels are always in sync, although it could
     // lead to a small bit of overhead (e.g. re-sending the channels / channel-mask even if the
     // device did not reset these).
-    fn reset_channels_on_adr_ack_req(&mut self) -> Result<()> {
+    fn reset_channels_on_activation_or_adr_ack_req(&mut self) -> Result<()> {
         trace!("Reset channels on adr ack req");
         let d = self.device.as_mut().unwrap();
+        let ds = d.get_device_session_mut()?;
 
-        if let lrwn::Payload::MACPayload(pl) = &self.phy_payload.payload {
-            if pl.fhdr.f_ctrl.adr_ack_req {
-                let region_conf = region::get(&self.uplink_frame_set.region_config_id)?;
-                let ds = d.get_device_session_mut()?;
+        if let lrwn::Payload::MACPayload(pl) = &self.phy_payload.payload
+            && (pl.fhdr.f_ctrl.adr_ack_req || ds.enabled_uplink_channel_indices.is_empty())
+        {
+            let region_conf = region::get(&self.uplink_frame_set.region_config_id)?;
 
-                // We reset the device-session enabled_uplink_channel_indices and
-                // extra_uplink_channels. On the downlink path, the mac-command handling will
-                // detect that the device is out-of-sync with the NS configuration and will send
-                // mac-commands to re-sync.
-                ds.enabled_uplink_channel_indices = region_conf
-                    .get_default_uplink_channel_indices()
-                    .iter()
-                    .map(|i| *i as u32)
-                    .collect();
-                ds.extra_uplink_channels = HashMap::new();
-            }
+            // We reset the device-session enabled_uplink_channel_indices and
+            // extra_uplink_channels. On the downlink path, the mac-command handling will
+            // detect that the device is out-of-sync with the NS configuration and will send
+            // mac-commands to re-sync.
+            ds.enabled_uplink_channel_indices = region_conf
+                .get_default_uplink_channel_indices()
+                .iter()
+                .map(|i| *i as u32)
+                .collect();
+            ds.extra_uplink_channels = HashMap::new();
         }
 
         Ok(())
@@ -780,6 +801,7 @@ impl Data {
                     self.application.as_ref().unwrap(),
                     self.device_profile.as_ref().unwrap(),
                     self.device.as_mut().unwrap(),
+                    self.region_conf.as_ref().unwrap().clone(),
                 )
                 .await
                 .context("Handle uplink mac-commands")?;
@@ -797,6 +819,7 @@ impl Data {
                     self.application.as_ref().unwrap(),
                     self.device_profile.as_ref().unwrap(),
                     self.device.as_mut().unwrap(),
+                    self.region_conf.as_ref().unwrap().clone(),
                 )
                 .await
                 .context("Handle uplink mac-commands")?;
@@ -805,16 +828,6 @@ impl Data {
                 self.downlink_mac_commands = mac_response;
             }
         }
-
-        Ok(())
-    }
-
-    async fn save_device_gateway_rx_info(&mut self) -> Result<()> {
-        trace!("Saving gateway rx-info for device");
-
-        device_gateway::save_rx_info(self.device_gateway_rx_info.as_ref().unwrap())
-            .await
-            .context("Save gatewa rx-info for device")?;
 
         Ok(())
     }
@@ -1100,18 +1113,6 @@ impl Data {
         Ok(())
     }
 
-    // This is called on every uplink as the device might switch between different regions (e.g.
-    // US915 8 channels to US915 16 channels). As well with ABP devices on ABP activation this is
-    // value is not set initially.
-    fn set_region_config_id(&mut self) -> Result<()> {
-        trace!("Setting region_config_id to device-session");
-        let d = self.device.as_mut().unwrap();
-        let ds = d.get_device_session_mut()?;
-        ds.region_config_id
-            .clone_from(&self.uplink_frame_set.region_config_id);
-        Ok(())
-    }
-
     async fn update_device(&mut self) -> Result<()> {
         trace!("Updating device");
 
@@ -1292,7 +1293,6 @@ impl Data {
         if let lrwn::Payload::MACPayload(pl) = &self.phy_payload.payload {
             downlink::data::Data::handle_response(
                 self.uplink_frame_set.clone(),
-                self.device_gateway_rx_info.as_ref().cloned().unwrap(),
                 self.tenant.as_ref().cloned().unwrap(),
                 self.application.as_ref().cloned().unwrap(),
                 self.device_profile.as_ref().cloned().unwrap(),
@@ -1335,7 +1335,6 @@ impl Data {
             downlink::data::Data::handle_response_relayed(
                 self.relay_context.as_ref().cloned().unwrap(),
                 self.uplink_frame_set.clone(),
-                self.device_gateway_rx_info.as_ref().cloned().unwrap(),
                 self.tenant.as_ref().cloned().unwrap(),
                 self.application.as_ref().cloned().unwrap(),
                 self.device_profile.as_ref().cloned().unwrap(),
@@ -1353,44 +1352,41 @@ impl Data {
     async fn handle_forward_uplink_req(&self) -> Result<()> {
         trace!("Handling ForwardUplinkReq");
 
-        if let lrwn::Payload::MACPayload(relay_pl) = &self.phy_payload.payload {
-            if let Some(lrwn::FRMPayload::ForwardUplinkReq(pl)) = &relay_pl.frm_payload {
-                match pl.payload.mhdr.f_type {
-                    lrwn::FType::JoinRequest => {
-                        super::join::JoinRequest::handle_relayed(
-                            super::RelayContext {
-                                req: pl.clone(),
-                                device: self.device.as_ref().unwrap().clone(),
-                                device_profile: self.device_profile.as_ref().unwrap().clone(),
-                                must_ack: self.phy_payload.mhdr.f_type
-                                    == lrwn::FType::ConfirmedDataUp,
-                                must_send_downlink: relay_pl.fhdr.f_ctrl.adr_ack_req,
-                            },
-                            self.uplink_frame_set.clone(),
-                        )
-                        .await
-                    }
-                    lrwn::FType::UnconfirmedDataUp | lrwn::FType::ConfirmedDataUp => {
-                        Data::handle_relayed(
-                            super::RelayContext {
-                                req: pl.clone(),
-                                device: self.device.as_ref().unwrap().clone(),
-                                device_profile: self.device_profile.as_ref().unwrap().clone(),
-                                must_ack: self.phy_payload.mhdr.f_type
-                                    == lrwn::FType::ConfirmedDataUp,
-                                must_send_downlink: relay_pl.fhdr.f_ctrl.adr_ack_req,
-                            },
-                            self.device_gateway_rx_info.as_ref().unwrap().clone(),
-                            self.uplink_frame_set.clone(),
-                        )
-                        .await
-                    }
-                    _ => {
-                        return Err(anyhow!(
-                            "Handling ForwardUplinkReq for FType {} supported",
-                            pl.payload.mhdr.f_type
-                        ));
-                    }
+        if let lrwn::Payload::MACPayload(relay_pl) = &self.phy_payload.payload
+            && let Some(lrwn::FRMPayload::ForwardUplinkReq(pl)) = &relay_pl.frm_payload
+        {
+            match pl.payload.mhdr.f_type {
+                lrwn::FType::JoinRequest => {
+                    super::join::JoinRequest::handle_relayed(
+                        super::RelayContext {
+                            req: pl.clone(),
+                            device: self.device.as_ref().unwrap().clone(),
+                            device_profile: self.device_profile.as_ref().unwrap().clone(),
+                            must_ack: self.phy_payload.mhdr.f_type == lrwn::FType::ConfirmedDataUp,
+                            must_send_downlink: relay_pl.fhdr.f_ctrl.adr_ack_req,
+                        },
+                        self.uplink_frame_set.clone(),
+                    )
+                    .await
+                }
+                lrwn::FType::UnconfirmedDataUp | lrwn::FType::ConfirmedDataUp => {
+                    Data::handle_relayed(
+                        super::RelayContext {
+                            req: pl.clone(),
+                            device: self.device.as_ref().unwrap().clone(),
+                            device_profile: self.device_profile.as_ref().unwrap().clone(),
+                            must_ack: self.phy_payload.mhdr.f_type == lrwn::FType::ConfirmedDataUp,
+                            must_send_downlink: relay_pl.fhdr.f_ctrl.adr_ack_req,
+                        },
+                        self.uplink_frame_set.clone(),
+                    )
+                    .await
+                }
+                _ => {
+                    return Err(anyhow!(
+                        "Handling ForwardUplinkReq for FType {} supported",
+                        pl.payload.mhdr.f_type
+                    ));
                 }
             }
         }
@@ -1405,12 +1401,12 @@ impl Data {
     fn _is_relay(&self) -> bool {
         let dp = self.device_profile.as_ref().unwrap();
 
-        if let lrwn::Payload::MACPayload(pl) = &self.phy_payload.payload {
-            if let Some(relay_params) = &dp.relay_params {
-                if relay_params.is_relay && pl.f_port.unwrap_or(0) == lrwn::LA_FPORT_RELAY {
-                    return true;
-                }
-            }
+        if let lrwn::Payload::MACPayload(pl) = &self.phy_payload.payload
+            && let Some(relay_params) = &dp.relay_params
+            && relay_params.is_relay
+            && pl.f_port.unwrap_or(0) == lrwn::LA_FPORT_RELAY
+        {
+            return true;
         }
 
         false
@@ -1426,10 +1422,10 @@ impl Data {
             return true;
         }
 
-        if let Some(app_s_key) = &ds.app_s_key {
-            if !app_s_key.kek_label.is_empty() {
-                return true;
-            }
+        if let Some(app_s_key) = &ds.app_s_key
+            && !app_s_key.kek_label.is_empty()
+        {
+            return true;
         }
 
         false

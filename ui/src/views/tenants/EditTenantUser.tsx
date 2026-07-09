@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 
 import { Space, Breadcrumb, Card, Button } from "antd";
-import { PageHeader } from "@ant-design/pro-layout";
 
 import type { Tenant, TenantUser, GetTenantUserResponse } from "@chirpstack/chirpstack-api-grpc-web/api/tenant_pb";
 import {
@@ -17,6 +16,7 @@ import SessionStore from "../../stores/SessionStore";
 import DeleteConfirm from "../../components/DeleteConfirm";
 import Admin from "../../components/Admin";
 import { useTitle } from "../helpers";
+import PageHeader from "../../components/PageHeader";
 
 function EditTenantUser({ tenant }: { tenant: Tenant }) {
   const [tenantUser, setTenantUser] = useState<TenantUser | undefined>(undefined);
@@ -62,32 +62,22 @@ function EditTenantUser({ tenant }: { tenant: Tenant }) {
   const disabled = !(SessionStore.isAdmin() || SessionStore.isTenantAdmin(tenant.getId()));
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size="large">
+    <Space orientation="vertical" style={{ width: "100%" }} size="large">
       <PageHeader
         breadcrumbRender={() => (
-          <Breadcrumb>
-            <Breadcrumb.Item>
-              <span>Tenants</span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${tenant.getId()}`}>{tenant.getName()}</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${tenant.getId()}/users`}>Tenant users</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>{tu.getEmail()}</span>
-            </Breadcrumb.Item>
-          </Breadcrumb>
+          <Breadcrumb
+            items={[
+              { title: "Tenants" },
+              { title: <Link to={`/tenants/${tenant.getId()}`}>{tenant.getName()}</Link> },
+              { title: <Link to={`/tenants/${tenant.getId()}/users`}>Tenant users</Link> },
+              { title: tu.getEmail() },
+            ]}
+          />
         )}
         title={tu.getEmail()}
         subTitle={`user id: ${tu.getUserId()}`}
         extra={[
-          <Admin tenantId={tenant.getId()} isTenantAdmin>
+          <Admin tenantId={tenant.getId()} isTenantAdmin key="delete-tenant-user">
             <DeleteConfirm typ="tenant user" confirm={tu.getEmail()} onConfirm={deleteTenantUser}>
               <Button danger type="primary">
                 Delete tenant user

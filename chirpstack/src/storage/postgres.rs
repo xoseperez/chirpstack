@@ -6,15 +6,15 @@ use tracing::{error, info};
 
 use crate::monitoring::prometheus;
 use diesel::{ConnectionError, ConnectionResult};
+use diesel_async::AsyncPgConnection;
 use diesel_async::pooled_connection::deadpool::{Object as DeadpoolObject, Pool as DeadpoolPool};
-use diesel_async::pooled_connection::{AsyncDieselConnectionManager, ManagerConfig};
-use diesel_async::{AsyncConnection, AsyncPgConnection};
+use diesel_async::pooled_connection::{
+    AsyncDieselConnectionManager, ManagerConfig, RecyclingMethod,
+};
 use futures::{FutureExt, future::BoxFuture};
 use prometheus_client::metrics::histogram::{Histogram, exponential_buckets};
-use scoped_futures::ScopedBoxFuture;
 
 use crate::config;
-
 use crate::helpers::tls::get_root_certs;
 
 pub type AsyncPgPool = DeadpoolPool<AsyncPgConnection>;
@@ -35,6 +35,26 @@ pub fn setup(conf: &config::Postgresql) -> Result<()> {
     info!("Setting up PostgreSQL connection pool");
     let mut config = ManagerConfig::default();
     config.custom_setup = Box::new(pg_establish_connection);
+
+    // Set recycling method based on configuration
+    config.recycling_method = match conf.connection_recycling_method.to_lowercase().as_str() {
+        "fast" => {
+            info!("Using Fast connection recycling method (no validation query)");
+            RecyclingMethod::Fast
+        }
+        "verified" => {
+            info!("Using Verified connection recycling method (SELECT 1 validation query)");
+            RecyclingMethod::Verified
+        }
+        _ => {
+            error!(
+                method = %conf.connection_recycling_method,
+                "Invalid connection_recycling_method, defaulting to 'verified'. Valid options: 'fast', 'verified'"
+            );
+            RecyclingMethod::Verified
+        }
+    };
+
     let mgr = AsyncDieselConnectionManager::<AsyncPgConnection>::new_with_config(&conf.dsn, config);
     let pool = DeadpoolPool::builder(mgr)
         .max_size(conf.max_open_connections as usize)
@@ -91,20 +111,6 @@ pub async fn get_async_db_conn() -> Result<AsyncPgPoolConnection> {
     STORAGE_PG_CONN_GET.observe(start.elapsed().as_secs_f64());
 
     Ok(res)
-}
-
-pub async fn db_transaction<'a, R, E, F>(
-    conn: &mut AsyncPgPoolConnection,
-    callback: F,
-) -> Result<R, E>
-where
-    F: for<'r> FnOnce(&'r mut AsyncPgPoolConnection) -> ScopedBoxFuture<'a, 'r, Result<R, E>>
-        + Send
-        + 'a,
-    E: From<diesel::result::Error> + Send + 'a,
-    R: Send + 'a,
-{
-    conn.transaction(callback).await
 }
 
 fn set_async_db_pool(p: AsyncPgPool) {

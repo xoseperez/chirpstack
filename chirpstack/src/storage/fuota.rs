@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Utc};
 use diesel::{dsl, prelude::*};
-use diesel_async::RunQueryDsl;
+use diesel_async::{AsyncConnection, RunQueryDsl};
 use tracing::info;
 use uuid::Uuid;
 use validator::Validate;
@@ -14,7 +14,7 @@ use crate::storage::schema::{
     application, device, fuota_deployment, fuota_deployment_device, fuota_deployment_gateway,
     fuota_deployment_job, gateway, tenant,
 };
-use crate::storage::{self, db_transaction, device_profile, fields, get_async_db_conn};
+use crate::storage::{self, device_profile, fields, get_async_db_conn};
 use lrwn::{AES128Key, DevAddr, EUI64};
 
 #[derive(Clone, Queryable, Insertable, Debug, PartialEq, Eq, Validate)]
@@ -96,6 +96,8 @@ pub struct FuotaDeploymentListItem {
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
     pub name: String,
+    pub application_id: fields::Uuid,
+    pub application_name: String,
 }
 
 #[derive(Clone, Queryable, Insertable, Debug, PartialEq, Eq)]
@@ -183,12 +185,15 @@ impl Default for FuotaDeploymentJob {
 pub async fn create_deployment(d: FuotaDeployment) -> Result<FuotaDeployment, Error> {
     d.validate()?;
 
-    let app = storage::application::get(&d.application_id).await?;
     let dp = device_profile::get(&d.device_profile_id).await?;
-    if app.tenant_id != dp.tenant_id {
-        return Err(Error::Validation(
-            "The application and device-profile must be under the samen tenant".into(),
-        ));
+
+    if let Some(tenant_id) = dp.tenant_id {
+        let app = storage::application::get(&d.application_id).await?;
+        if app.tenant_id != tenant_id {
+            return Err(Error::Validation(
+                "The application and device-profile must be under the same tenant".into(),
+            ));
+        }
     }
 
     let d: FuotaDeployment = diesel::insert_into(fuota_deployment::table)
@@ -260,21 +265,36 @@ pub async fn delete_deployment(id: Uuid) -> Result<(), Error> {
     Ok(())
 }
 
-pub async fn get_deployment_count(application_id: Uuid) -> Result<i64, Error> {
-    fuota_deployment::dsl::fuota_deployment
+pub async fn get_deployment_count(
+    tenant_id: Option<Uuid>,
+    application_id: Option<Uuid>,
+) -> Result<i64, Error> {
+    let mut q = fuota_deployment::table
+        .inner_join(application::table)
         .select(dsl::count_star())
-        .filter(fuota_deployment::dsl::application_id.eq(fields::Uuid::from(application_id)))
-        .first(&mut get_async_db_conn().await?)
+        .into_boxed();
+
+    if let Some(tenant_id) = tenant_id {
+        q = q.filter(application::tenant_id.eq(fields::Uuid::from(tenant_id)));
+    }
+
+    if let Some(application_id) = application_id {
+        q = q.filter(fuota_deployment::application_id.eq(fields::Uuid::from(application_id)));
+    }
+
+    q.first(&mut get_async_db_conn().await?)
         .await
         .map_err(|e| Error::from_diesel(e, "".into()))
 }
 
 pub async fn list_deployments(
-    application_id: Uuid,
+    tenant_id: Option<Uuid>,
+    application_id: Option<Uuid>,
     limit: i64,
     offset: i64,
 ) -> Result<Vec<FuotaDeploymentListItem>, Error> {
-    fuota_deployment::dsl::fuota_deployment
+    let mut q = fuota_deployment::dsl::fuota_deployment
+        .inner_join(application::table)
         .select((
             fuota_deployment::id,
             fuota_deployment::created_at,
@@ -282,9 +302,20 @@ pub async fn list_deployments(
             fuota_deployment::started_at,
             fuota_deployment::completed_at,
             fuota_deployment::name,
+            application::id,
+            application::name,
         ))
-        .filter(fuota_deployment::dsl::application_id.eq(fields::Uuid::from(application_id)))
-        .order_by(fuota_deployment::dsl::name)
+        .into_boxed();
+
+    if let Some(tenant_id) = tenant_id {
+        q = q.filter(application::tenant_id.eq(fields::Uuid::from(tenant_id)));
+    }
+
+    if let Some(application_id) = application_id {
+        q = q.filter(fuota_deployment::application_id.eq(fields::Uuid::from(application_id)));
+    }
+
+    q.order_by((application::name, fuota_deployment::dsl::name))
         .limit(limit)
         .offset(offset)
         .load(&mut get_async_db_conn().await?)
@@ -614,8 +645,8 @@ pub async fn get_gateways(
 // Creating a new job, will set any pending job(s) to completed within the same transaction.
 pub async fn create_job(j: FuotaDeploymentJob) -> Result<FuotaDeploymentJob, Error> {
     let mut c = get_async_db_conn().await?;
-    let j: FuotaDeploymentJob = db_transaction::<FuotaDeploymentJob, Error, _>(&mut c, |c| {
-        Box::pin(async move {
+    let j: FuotaDeploymentJob = c
+        .transaction::<FuotaDeploymentJob, Error, _>(async |c| {
             // set pending job(s) to completed
             diesel::update(
                 fuota_deployment_job::dsl::fuota_deployment_job
@@ -635,8 +666,7 @@ pub async fn create_job(j: FuotaDeploymentJob) -> Result<FuotaDeploymentJob, Err
                 .await
                 .map_err(|e| Error::from_diesel(e, j.fuota_deployment_id.to_string()))
         })
-    })
-    .await?;
+        .await?;
 
     info!(fuota_deployment_id = %j.fuota_deployment_id, job = %j.job, "FUOTA deployment job created");
     Ok(j)
@@ -677,11 +707,10 @@ pub async fn list_jobs(fuota_deployment_id: Uuid) -> Result<Vec<FuotaDeploymentJ
 // This is such that concurrent queries will not result in the same job being executed twice.
 pub async fn get_schedulable_jobs(limit: usize) -> Result<Vec<FuotaDeploymentJob>> {
     let mut c = get_async_db_conn().await?;
-    db_transaction::<Vec<FuotaDeploymentJob>, Error, _>(&mut c, |c| {
-        Box::pin(async move {
-            let conf = config::get();
-            diesel::sql_query(if cfg!(feature = "sqlite") {
-                r#"
+    c.transaction::<Vec<FuotaDeploymentJob>, Error, _>(async |c| {
+        let conf = config::get();
+        diesel::sql_query(if cfg!(feature = "sqlite") {
+            r#"
                     update
                         fuota_deployment_job
                     set
@@ -702,8 +731,8 @@ pub async fn get_schedulable_jobs(limit: usize) -> Result<Vec<FuotaDeploymentJob
                         )
                     returning *
                 "#
-            } else {
-                r#"
+        } else {
+            r#"
                     update
                         fuota_deployment_job
                     set
@@ -721,19 +750,20 @@ pub async fn get_schedulable_jobs(limit: usize) -> Result<Vec<FuotaDeploymentJob
                             order by
                                 created_at
                             limit $1
+                            for update skip locked
                         )
                     returning *
                 "#
-            })
-            .bind::<diesel::sql_types::Integer, _>(limit as i32)
-            .bind::<fields::sql_types::Timestamptz, _>(Utc::now())
-            .bind::<fields::sql_types::Timestamptz, _>(
-                Utc::now() + Duration::from_std(2 * conf.network.scheduler.interval).unwrap(),
-            )
-            .load(c)
-            .await
-            .map_err(|e| Error::from_diesel(e, "".into()))
         })
+        .bind::<diesel::sql_types::Integer, _>(limit as i32)
+        .bind::<fields::sql_types::Timestamptz, _>(Utc::now())
+        .bind::<fields::sql_types::Timestamptz, _>(
+            Utc::now()
+                + Duration::from_std(conf.network.scheduler.scheduler_lock_duration).unwrap(),
+        )
+        .load(c)
+        .await
+        .map_err(|e| Error::from_diesel(e, "".into()))
     })
     .await
     .context("Get FUOTA jobs")
@@ -743,7 +773,7 @@ pub async fn get_max_fragment_size(d: &FuotaDeployment) -> Result<usize> {
     let dp = device_profile::get(&d.device_profile_id).await?;
     let region_conf = lrwn::region::get(dp.region, false, false);
     let max_pl_size = region_conf
-        .get_max_payload_size(dp.mac_version, dp.reg_params_revision, d.multicast_dr as u8)?
+        .get_max_dl_payload_size(dp.mac_version, dp.reg_params_revision, d.multicast_dr as u8)?
         .n
         - 3;
 
@@ -832,7 +862,7 @@ mod test {
         .unwrap();
 
         let dp = device_profile::create(device_profile::DeviceProfile {
-            tenant_id: t.id,
+            tenant_id: Some(t.id),
             name: "test-dp".into(),
             ..Default::default()
         })
@@ -857,7 +887,12 @@ mod test {
         let d = update_deployment(d).await.unwrap();
 
         // count
-        assert_eq!(1, get_deployment_count(app.id.into()).await.unwrap());
+        assert_eq!(
+            1,
+            get_deployment_count(None, Some(app.id.into()))
+                .await
+                .unwrap()
+        );
 
         // list
         assert_eq!(
@@ -868,8 +903,27 @@ mod test {
                 started_at: None,
                 completed_at: None,
                 name: d.name.clone(),
+                application_id: app.id,
+                application_name: app.name.clone(),
             }],
-            list_deployments(app.id.into(), 10, 0).await.unwrap()
+            list_deployments(None, Some(app.id.into()), 10, 0)
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            vec![FuotaDeploymentListItem {
+                id: d.id,
+                created_at: d.created_at,
+                updated_at: d.updated_at,
+                started_at: None,
+                completed_at: None,
+                name: d.name.clone(),
+                application_id: app.id,
+                application_name: app.name.clone(),
+            }],
+            list_deployments(Some(app.tenant_id.into()), None, 10, 0)
+                .await
+                .unwrap()
         );
 
         // delete
@@ -905,7 +959,7 @@ mod test {
         .unwrap();
 
         let dp = device_profile::create(device_profile::DeviceProfile {
-            tenant_id: t.id,
+            tenant_id: Some(t.id),
             name: "test-dp".into(),
             ..Default::default()
         })
@@ -913,7 +967,7 @@ mod test {
         .unwrap();
 
         let dp2 = device_profile::create(device_profile::DeviceProfile {
-            tenant_id: t.id,
+            tenant_id: Some(t.id),
             name: "test-dp".into(),
             ..Default::default()
         })
@@ -1020,7 +1074,7 @@ mod test {
         .unwrap();
 
         let dp = device_profile::create(device_profile::DeviceProfile {
-            tenant_id: t.id,
+            tenant_id: Some(t.id),
             name: "test-dp".into(),
             ..Default::default()
         })
@@ -1099,7 +1153,7 @@ mod test {
         .unwrap();
 
         let dp = device_profile::create(device_profile::DeviceProfile {
-            tenant_id: t.id,
+            tenant_id: Some(t.id),
             name: "test-dp".into(),
             ..Default::default()
         })
@@ -1185,7 +1239,7 @@ mod test {
         .unwrap();
 
         let dp = device_profile::create(device_profile::DeviceProfile {
-            tenant_id: t.id,
+            tenant_id: Some(t.id),
             name: "test-dp".into(),
             ..Default::default()
         })

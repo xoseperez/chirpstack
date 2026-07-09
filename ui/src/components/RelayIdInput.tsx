@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { notification, Input, Select, Button, Space, Form, Dropdown, Menu } from "antd";
 import { ReloadOutlined, CopyOutlined } from "@ant-design/icons";
 import { Buffer } from "buffer";
+import { MenuProps } from "antd/lib";
 
 interface IProps {
   label: string;
@@ -132,39 +133,27 @@ function RelayIdInput(props: IProps) {
     }
   };
 
-  const copyMenu = (
-    <Menu
-      items={[
-        {
-          key: "1",
-          label: (
-            <Button type="text" onClick={copyToClipboard}>
-              HEX string
-            </Button>
-          ),
-        },
-        {
-          key: "2",
-          label: (
-            <Button type="text" onClick={copyToClipboardHexArray}>
-              HEX array
-            </Button>
-          ),
-        },
-      ]}
-    />
-  );
+  const copyMenu: MenuProps = {
+    items: [
+      { key: "1", label: "HEX string", onClick: copyToClipboard },
+      { key: "2", label: "HEX array", onClick: copyToClipboardHexArray },
+    ],
+  };
 
   const addon = (
     <Space size="large">
-      <Select value={byteOrder} onChange={onByteOrderSelect}>
-        <Select.Option value="msb">MSB</Select.Option>
-        <Select.Option value="lsb">LSB</Select.Option>
-      </Select>
+      <Select
+        value={byteOrder}
+        onChange={onByteOrderSelect}
+        options={[
+          { value: "msb", label: "MSB" },
+          { value: "lsb", label: "LSB" },
+        ]}
+      />
       <Button type="text" size="small" onClick={generateRandom}>
         <ReloadOutlined />
       </Button>
-      <Dropdown overlay={copyMenu}>
+      <Dropdown menu={copyMenu}>
         <Button type="text" size="small">
           <CopyOutlined />
         </Button>
@@ -189,7 +178,7 @@ function RelayIdInput(props: IProps) {
       <Input
         id={`${props.name}Render`}
         onChange={onChange}
-        addonAfter={!props.disabled && addon}
+        suffix={!props.disabled && addon}
         className="input-code"
         value={value}
         disabled={props.disabled}

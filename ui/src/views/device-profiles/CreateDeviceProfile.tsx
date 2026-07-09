@@ -1,7 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 
 import { Space, Breadcrumb, Card } from "antd";
-import { PageHeader } from "@ant-design/pro-layout";
 
 import { MacVersion, RegParamsRevision } from "@chirpstack/chirpstack-api-grpc-web/common/common_pb";
 import type { CreateDeviceProfileResponse } from "@chirpstack/chirpstack-api-grpc-web/api/device_profile_pb";
@@ -16,6 +15,7 @@ import type { Tenant } from "@chirpstack/chirpstack-api-grpc-web/api/tenant_pb";
 import DeviceProfileForm from "./DeviceProfileForm";
 import DeviceProfileStore from "../../stores/DeviceProfileStore";
 import { useTitle } from "../helpers";
+import PageHeader from "../../components/PageHeader";
 
 interface IProps {
   tenant: Tenant;
@@ -44,7 +44,7 @@ function CreateDeviceProfile(props: IProps) {
  * @param {number} input.fPort Uplink fPort.
  * @param {Record<string, string>} input.variables Object containing the configured device variables.
  * 
- * @returns {{data: object, errors: string[], warnings: string[]}}
+ * @returns {{data: object, errors?: string[], warnings?: string[]}}
  * An object containing:
  * - data: Object representing the decoded payload.
  * - errors: An array of errors (optional).
@@ -65,10 +65,10 @@ function decodeUplink(input) {
  * @param {object} input.data Object representing the payload that must be encoded.
  * @param {Record<string, string>} input.variables Object containing the configured device variables.
  * 
- * @returns {{bytes: number[], fPort: number, errors: string[], warnings: string[]}}
+ * @returns {{bytes: number[], fPort?: number, errors?: string[], warnings?: string[]}}
  * An object containing:
  * - bytes: Byte array containing the downlink payload.
- * - fPort: The downlink LoRaWAN fPort.
+ * - fPort: The downlink LoRaWAN fPort. (falls back to provided fPort)
  * - errors: An array of errors (optional).
  * - warnings: An array of warnings (optional).
  */
@@ -98,27 +98,17 @@ function encodeDownlink(input) {
   deviceProfile.setAppLayerParams(appLayer);
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size="large">
+    <Space orientation="vertical" style={{ width: "100%" }} size="large">
       <PageHeader
         breadcrumbRender={() => (
-          <Breadcrumb>
-            <Breadcrumb.Item>
-              <span>Tenants</span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${props.tenant.getId()}`}>{props.tenant.getName()}</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${props.tenant.getId()}/device-profiles`}>Device profiles</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>Add</span>
-            </Breadcrumb.Item>
-          </Breadcrumb>
+          <Breadcrumb
+            items={[
+              { title: "Tenants" },
+              { title: <Link to={`/tenants/${props.tenant.getId()}`}>{props.tenant.getName()}</Link> },
+              { title: <Link to={`/tenants/${props.tenant.getId()}/device-profiles`}>Device profiles</Link> },
+              { title: "Add" },
+            ]}
+          />
         )}
         title="Add device profile"
       />

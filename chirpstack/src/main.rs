@@ -64,15 +64,8 @@ enum Commands {
         dev_eui: String,
     },
 
-    /// Import lorawan-device-profiles repository.
-    ImportLorawanDeviceProfiles {
-        /// Path to repository root.
-        #[arg(short, long, value_name = "DIR")]
-        dir: String,
-    },
-
-    /// Import legacy lorawan-devices repository.
-    ImportLegacyLorawanDevicesRepository {
+    /// Import device-profiles repository.
+    ImportDeviceProfiles {
         /// Path to repository root.
         #[arg(short, long, value_name = "DIR")]
         dir: String,
@@ -85,8 +78,29 @@ enum Commands {
         name: String,
     },
 
+    /// Set user password.
+    SetPassword {
+        /// User email address.
+        #[arg(short, long, value_name = "EMAIL")]
+        email: String,
+
+        /// Path to file containing the new password.
+        #[arg(short, long, value_name = "FILE")]
+        password_file: Option<String>,
+
+        /// Read password from stdin.
+        #[arg(long)]
+        stdin: bool,
+    },
+
     /// Migrate device-sessions from Redis to PostgreSQL.
     MigrateDeviceSessionsToPostgres {},
+
+    /// Migrate device-profile templates to device profiles.
+    MigrateDeviceProfileTemplates {},
+
+    /// Migrate Device <> Gateway Rx Info.
+    MigrateDeviceGatewayRxInfo {},
 }
 
 #[tokio::main]
@@ -122,18 +136,24 @@ async fn main() -> Result<()> {
             let dev_eui = EUI64::from_str(dev_eui).unwrap();
             cmd::print_ds::run(&dev_eui).await.unwrap();
         }
-        Some(Commands::ImportLorawanDeviceProfiles { dir }) => {
-            cmd::import_lorawan_device_profiles::run(Path::new(&dir))
-                .await
-                .unwrap()
-        }
-        Some(Commands::ImportLegacyLorawanDevicesRepository { dir }) => {
-            cmd::import_legacy_lorawan_devices_repository::run(Path::new(&dir))
+        Some(Commands::ImportDeviceProfiles { dir }) => {
+            cmd::import_device_profiles::run(Path::new(&dir))
                 .await
                 .unwrap()
         }
         Some(Commands::CreateApiKey { name }) => cmd::create_api_key::run(name).await?,
+        Some(Commands::SetPassword {
+            email,
+            password_file,
+            stdin,
+        }) => cmd::set_password::run(email, password_file, *stdin).await?,
         Some(Commands::MigrateDeviceSessionsToPostgres {}) => cmd::migrate_ds_to_pg::run().await?,
+        Some(Commands::MigrateDeviceProfileTemplates {}) => {
+            cmd::migrate_device_profile_templates::run().await?
+        }
+        Some(Commands::MigrateDeviceGatewayRxInfo {}) => {
+            cmd::migrate_device_gateway_rx_info::run().await?
+        }
         None => cmd::root::run().await?,
     }
 

@@ -59,13 +59,13 @@ pub fn get_rx_timestamp(rx_info: &[gw::UplinkRxInfo]) -> SystemTime {
 
     // First search for time_since_gps_epoch.
     for rxi in rx_info {
-        if let Some(gps_time) = &rxi.time_since_gps_epoch {
-            if let Ok(ts) = chrono::Duration::from_std(Duration::new(
+        if let Some(gps_time) = &rxi.time_since_gps_epoch
+            && let Ok(ts) = chrono::Duration::from_std(Duration::new(
                 gps_time.seconds as u64,
                 gps_time.nanos as u32,
-            )) {
-                return ts.to_date_time().into();
-            }
+            ))
+        {
+            return ts.to_date_time().into();
         }
     }
 
@@ -96,13 +96,13 @@ pub fn get_rx_timestamp_chrono(rx_info: &[gw::UplinkRxInfo]) -> DateTime<Utc> {
 
     // First search for time_since_gps_epoch.
     for rxi in rx_info {
-        if let Some(gps_time) = &rxi.time_since_gps_epoch {
-            if let Ok(ts) = chrono::Duration::from_std(Duration::new(
+        if let Some(gps_time) = &rxi.time_since_gps_epoch
+            && let Ok(ts) = chrono::Duration::from_std(Duration::new(
                 gps_time.seconds as u64,
                 gps_time.nanos as u32,
-            )) {
-                return ts.to_date_time();
-            }
+            ))
+        {
+            return ts.to_date_time();
         }
     }
 
@@ -147,7 +147,7 @@ pub fn set_uplink_modulation(
     dr: u8,
 ) -> Result<()> {
     let region_conf = region::get(region_config_id)?;
-    let params = region_conf.get_data_rate(dr)?;
+    let params = region_conf.get_data_rate(true, dr)?;
 
     tx_info.modulation = Some(gw::Modulation {
         parameters: Some(match params {

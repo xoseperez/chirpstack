@@ -6,6 +6,7 @@ use uuid::Uuid;
 use lrwn::{AES128Key, EUI64, FType, Payload, PhyPayload};
 
 use crate::api::helpers::ToProto;
+use crate::gpstime::ToDateTime;
 use crate::storage::{
     application,
     device::{self, DeviceClass},
@@ -282,6 +283,7 @@ impl TxAck {
         qi.is_pending = true;
 
         if dev.enabled_class == DeviceClass::C {
+            // Set timeout to now + timeout
             let timeout_sec = dp
                 .class_c_params
                 .as_ref()
@@ -289,6 +291,37 @@ impl TxAck {
                 .unwrap_or_default() as i64;
             let timeout = Utc::now() + Duration::try_seconds(timeout_sec).unwrap_or_default();
             qi.timeout_after = Some(timeout);
+        } else if dev.enabled_class == DeviceClass::B {
+            // set timeout to ping-slot time + timeout
+            let timeout_sec = dp
+                .class_b_params
+                .as_ref()
+                .map(|v| v.timeout)
+                .unwrap_or_default() as i64;
+
+            // get the tx_info
+            let tx_info = self
+                .downlink_frame_item
+                .as_ref()
+                .unwrap()
+                .tx_info
+                .as_ref()
+                .unwrap();
+
+            // get the gps epoch timestamp for timeout calculation
+            if let Some(timing) = tx_info.timing
+                && let Some(gw::timing::Parameters::GpsEpoch(gps_timing)) = timing.parameters
+            {
+                let gps_ts: std::time::Duration = gps_timing
+                    .time_since_gps_epoch
+                    .unwrap_or_default()
+                    .try_into()
+                    .unwrap_or_default();
+                let timeout =
+                    Duration::from_std(gps_ts)?.to_date_time() + Duration::seconds(timeout_sec);
+
+                qi.timeout_after = Some(timeout);
+            }
         }
 
         *qi = device_queue::update_item(qi.clone()).await?;
@@ -564,10 +597,10 @@ impl TxAck {
         }
         phy.decrypt_frm_payload(&nwk_s_enc_key)?;
 
-        if let Payload::MACPayload(pl) = phy.payload {
-            if let Some(lrwn::FRMPayload::ForwardDownlinkReq(pl)) = pl.frm_payload {
-                self.phy_payload_relayed = Some(*pl.payload);
-            }
+        if let Payload::MACPayload(pl) = phy.payload
+            && let Some(lrwn::FRMPayload::ForwardDownlinkReq(pl)) = pl.frm_payload
+        {
+            self.phy_payload_relayed = Some(*pl.payload);
         }
 
         Ok(())
@@ -737,10 +770,10 @@ impl TxAck {
             return false;
         }
 
-        if let lrwn::Payload::MACPayload(pl) = &self.phy_payload.as_ref().unwrap().payload {
-            if pl.f_port.unwrap_or(0) != 0 {
-                return true;
-            }
+        if let lrwn::Payload::MACPayload(pl) = &self.phy_payload.as_ref().unwrap().payload
+            && pl.f_port.unwrap_or(0) != 0
+        {
+            return true;
         }
         false
     }
@@ -750,20 +783,20 @@ impl TxAck {
             return false;
         }
 
-        if let lrwn::Payload::MACPayload(pl) = &self.phy_payload_relayed.as_ref().unwrap().payload {
-            if pl.f_port.unwrap_or(0) != 0 {
-                return true;
-            }
+        if let lrwn::Payload::MACPayload(pl) = &self.phy_payload_relayed.as_ref().unwrap().payload
+            && pl.f_port.unwrap_or(0) != 0
+        {
+            return true;
         }
 
         false
     }
 
     fn is_relay_payload(&self) -> bool {
-        if let lrwn::Payload::MACPayload(pl) = &self.phy_payload.as_ref().unwrap().payload {
-            if pl.f_port.unwrap_or(0) == lrwn::LA_FPORT_RELAY {
-                return true;
-            }
+        if let lrwn::Payload::MACPayload(pl) = &self.phy_payload.as_ref().unwrap().payload
+            && pl.f_port.unwrap_or(0) == lrwn::LA_FPORT_RELAY
+        {
+            return true;
         }
         false
     }
@@ -773,10 +806,10 @@ impl TxAck {
             return false;
         }
 
-        if let lrwn::Payload::MACPayload(pl) = &self.phy_payload.as_ref().unwrap().payload {
-            if pl.f_port.unwrap_or(0) == 0 {
-                return true;
-            }
+        if let lrwn::Payload::MACPayload(pl) = &self.phy_payload.as_ref().unwrap().payload
+            && pl.f_port.unwrap_or(0) == 0
+        {
+            return true;
         }
         false
     }
@@ -786,10 +819,10 @@ impl TxAck {
             return false;
         }
 
-        if let lrwn::Payload::MACPayload(pl) = &self.phy_payload_relayed.as_ref().unwrap().payload {
-            if pl.f_port.unwrap_or(0) == 0 {
-                return true;
-            }
+        if let lrwn::Payload::MACPayload(pl) = &self.phy_payload_relayed.as_ref().unwrap().payload
+            && pl.f_port.unwrap_or(0) == 0
+        {
+            return true;
         }
         false
     }

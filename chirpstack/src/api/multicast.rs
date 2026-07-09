@@ -41,7 +41,11 @@ impl MulticastGroupService for MulticastGroup {
         self.validator
             .validate(
                 request.extensions(),
-                validator::ValidateMulticastGroupsAccess::new(validator::Flag::Create, app_id),
+                validator::ValidateMulticastGroupsAccess::new(
+                    validator::Flag::Create,
+                    None,
+                    Some(app_id),
+                ),
             )
             .await?;
 
@@ -201,17 +205,37 @@ impl MulticastGroupService for MulticastGroup {
         request: Request<api::ListMulticastGroupsRequest>,
     ) -> Result<Response<api::ListMulticastGroupsResponse>, Status> {
         let req = request.get_ref();
-        let app_id = Uuid::from_str(&req.application_id).map_err(|e| e.status())?;
+        let tenant_id = if req.tenant_id.is_empty() {
+            None
+        } else {
+            Some(Uuid::from_str(&req.tenant_id).map_err(|e| e.status())?)
+        };
+        let app_id = if req.application_id.is_empty() {
+            None
+        } else {
+            Some(Uuid::from_str(&req.application_id).map_err(|e| e.status())?)
+        };
+        let dev_eui = if req.dev_eui.is_empty() {
+            None
+        } else {
+            Some(EUI64::from_str(&req.dev_eui).map_err(|e| e.status())?)
+        };
 
         self.validator
             .validate(
                 request.extensions(),
-                validator::ValidateMulticastGroupsAccess::new(validator::Flag::List, app_id),
+                validator::ValidateMulticastGroupsAccess::new(
+                    validator::Flag::List,
+                    tenant_id,
+                    app_id,
+                ),
             )
             .await?;
 
         let filters = multicast::Filters {
-            application_id: Some(app_id),
+            tenant_id: None,
+            application_id: app_id,
+            dev_eui,
             search: if req.search.is_empty() {
                 None
             } else {
@@ -242,6 +266,8 @@ impl MulticastGroupService for MulticastGroup {
                         _ => api::MulticastGroupType::ClassC,
                     }
                     .into(),
+                    application_id: mg.application_id.to_string(),
+                    application_name: mg.application_name.clone(),
                 })
                 .collect(),
         });
@@ -496,7 +522,7 @@ pub mod test {
     use crate::api::auth::AuthID;
     use crate::api::auth::validator::RequestValidator;
     use crate::storage::{
-        application, device, device_gateway, device_profile, gateway, multicast, tenant, user,
+        application, device, device_profile, fields, gateway, multicast, tenant, user,
     };
     use crate::test;
     use chirpstack_api::{common, internal};
@@ -555,18 +581,19 @@ pub mod test {
         // create device-profile
         let dp = device_profile::create(device_profile::DeviceProfile {
             name: "test-dp".into(),
-            tenant_id: t.id,
+            tenant_id: Some(t.id),
             ..Default::default()
         })
         .await
         .unwrap();
 
         // create device
-        let d = device::create(device::Device {
+        let mut d = device::create(device::Device {
             application_id: app.id,
             device_profile_id: dp.id,
             dev_eui: EUI64::from_be_bytes([1, 2, 3, 4, 5, 6, 7, 8]),
             name: "test-dev".into(),
+            device_session: Some(fields::DeviceSession::new(Default::default())),
             ..Default::default()
         })
         .await
@@ -681,7 +708,9 @@ pub mod test {
             &u.id,
             api::ListMulticastGroupsRequest {
                 search: "updated".into(),
+                tenant_id: "".into(),
                 application_id: app.id.to_string(),
+                dev_eui: "".to_string(),
                 limit: 10,
                 offset: 0,
             },
@@ -728,14 +757,23 @@ pub mod test {
         assert_eq!(0, list_queue_resp.get_ref().items.len());
 
         // set uplink device <> gateway path
-        device_gateway::save_rx_info(&internal::DeviceGatewayRxInfo {
-            dev_eui: d.dev_eui.to_vec(),
-            items: vec![internal::DeviceGatewayRxInfoItem {
-                gateway_id: gw1.gateway_id.to_vec(),
-                ..Default::default()
+        d.device_session = Some(fields::DeviceSession::new(internal::DeviceSession {
+            gateway_rx_info_history: vec![internal::GatewayRxInfoHistory {
+                dr: 0,
+                items: vec![internal::GatewayRxInfoHistoryItem {
+                    gateway_id: gw1.gateway_id.to_vec(),
+                    ..Default::default()
+                }],
             }],
             ..Default::default()
-        })
+        }));
+        let d = device::partial_update(
+            d.dev_eui,
+            &device::DeviceChangeset {
+                device_session: Some(d.device_session),
+                ..Default::default()
+            },
+        )
         .await
         .unwrap();
 

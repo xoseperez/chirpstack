@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { format } from "date-fns";
 import { Space, Breadcrumb, Badge } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { PageHeader } from "@ant-design/pro-layout";
 
 import type {
   ListRelayGatewaysResponse,
@@ -16,6 +15,7 @@ import type { GetPageCallbackFunc } from "../../../components/DataTable";
 import DataTable from "../../../components/DataTable";
 import GatewayStore from "../../../stores/GatewayStore";
 import { useTitle } from "../../helpers";
+import PageHeader from "../../../components/PageHeader";
 
 interface IProps {
   tenant: Tenant;
@@ -97,26 +97,18 @@ function ListRelayGateways(props: IProps) {
   };
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size="large">
+    <Space orientation="vertical" style={{ width: "100%" }} size="large">
       <PageHeader
         title="Relay Gateways"
         breadcrumbRender={() => (
-          <Breadcrumb>
-            <Breadcrumb.Item>
-              <span>Tenants</span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${props.tenant.getId()}`}>{props.tenant.getName()}</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>Gateway Mesh</span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>Relay Gateways</span>
-            </Breadcrumb.Item>
-          </Breadcrumb>
+          <Breadcrumb
+            items={[
+              { title: "Tenants" },
+              { title: <Link to={`/tenants/${props.tenant.getId()}`}>{props.tenant.getName()}</Link> },
+              { title: "Gateway Mesh" },
+              { title: "Relay Gateways" },
+            ]}
+          />
         )}
       />
       <DataTable columns={columns} getPage={getPage} rowKey="relayId" />

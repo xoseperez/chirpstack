@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { ReactElement, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { presetPalettes } from "@ant-design/colors";
@@ -44,7 +44,7 @@ function GatewaysMap(props: GatewaysMapProps) {
   };
 
   const bounds: LatLngTuple[] = [];
-  const markers: JSX.Element[] = [];
+  const markers: ReactElement[] = [];
 
   for (const item of props.items) {
     if (item.getLocation() === undefined) {
@@ -68,7 +68,7 @@ function GatewaysMap(props: GatewaysMapProps) {
     }
 
     markers.push(
-      <Marker position={[pos[0], pos[1]]} faIcon="wifi" color={color}>
+      <Marker position={[pos[0], pos[1]]} faIcon="wifi" color={color} key={`${item.getGatewayId()}`}>
         <Popup>
           <Link to={`/tenants/${item.getTenantId()}/gateways/${item.getGatewayId()}`}>{item.getName()}</Link>
           <br />
@@ -270,7 +270,7 @@ function TenantDashboard({ tenant }: { tenant: Tenant }) {
   }, [tenant]);
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size="large">
+    <Space orientation="vertical" style={{ width: "100%" }} size="large">
       <Row gutter={24}>
         <Col span={8}>
           <Card title="Active devices">

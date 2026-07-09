@@ -248,14 +248,23 @@ impl Validator for ValidateUserAccess {
     }
 
     async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
-        // admin api key
-        let count = api_key::dsl::api_key
+        let mut q = api_key::dsl::api_key
             .select(dsl::count_star())
             .find(fields::Uuid::from(id))
             .filter(api_key::dsl::is_admin.eq(true))
-            .first(&mut get_async_db_conn().await?)
-            .await?;
-        Ok(count)
+            .into_boxed();
+
+        match self.flag {
+            // admin api key
+            Flag::Read => {}
+            // non read-only admin api key
+            Flag::Update | Flag::UpdateProfile | Flag::Delete => {
+                q = q.filter(api_key::is_read_only.eq(false));
+            }
+            _ => return Ok(0),
+        }
+
+        Ok(q.first(&mut get_async_db_conn().await?).await?)
     }
 }
 
@@ -419,14 +428,23 @@ impl Validator for ValidateTenantsAccess {
     }
 
     async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
-        // admin api key
-        let count = api_key::dsl::api_key
+        let mut q = api_key::dsl::api_key
             .select(dsl::count_star())
             .find(fields::Uuid::from(id))
             .filter(api_key::dsl::is_admin.eq(true))
-            .first(&mut get_async_db_conn().await?)
-            .await?;
-        Ok(count)
+            .into_boxed();
+
+        match self.flag {
+            // admin API key (not RO)
+            Flag::Create => {
+                q = q.filter(api_key::is_read_only.eq(false));
+            }
+            // admin API key.
+            Flag::List => {}
+            _ => return Ok(0),
+        }
+
+        Ok(q.first(&mut get_async_db_conn().await?).await?)
     }
 }
 
@@ -494,9 +512,13 @@ impl Validator for ValidateTenantAccess {
                         .or(api_key::dsl::tenant_id.eq(fields::Uuid::from(self.tenant_id))),
                 );
             }
-            // admin api key
+            // admin api key (not RO)
             Flag::Update | Flag::Delete => {
-                q = q.filter(api_key::dsl::is_admin.eq(true));
+                q = q.filter(
+                    api_key::is_admin
+                        .eq(true)
+                        .and(api_key::is_read_only.eq(false)),
+                );
             }
             _ => {
                 return Ok(0);
@@ -568,15 +590,26 @@ impl Validator for ValidateTenantUsersAccess {
     }
 
     async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = api_key::dsl::api_key
+        let mut q = api_key::table
             .select(dsl::count_star())
             .find(fields::Uuid::from(id))
             .into_boxed();
 
         match self.flag {
+            // admin api key (not RO)
+            // tenant api key (not RO)
+            Flag::Create => {
+                q = q
+                    .filter(
+                        api_key::is_admin
+                            .eq(true)
+                            .or(api_key::tenant_id.eq(fields::Uuid::from(self.tenant_id))),
+                    )
+                    .filter(api_key::is_read_only.eq(false));
+            }
             // admin api key
             // tenant api key
-            Flag::Create | Flag::List => {
+            Flag::List => {
                 q = q.filter(
                     api_key::dsl::is_admin
                         .eq(true)
@@ -667,7 +700,7 @@ impl Validator for ValidateTenantUserAccess {
     }
 
     async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = api_key::dsl::api_key
+        let mut q = api_key::table
             .select(dsl::count_star())
             .find(fields::Uuid::from(id))
             .into_boxed();
@@ -675,12 +708,23 @@ impl Validator for ValidateTenantUserAccess {
         match self.flag {
             // admin api key
             // tenant api key
-            Flag::Read | Flag::Update | Flag::Delete => {
+            Flag::Read => {
                 q = q.filter(
-                    api_key::dsl::is_admin
+                    api_key::is_admin
                         .eq(true)
-                        .or(api_key::dsl::tenant_id.eq(fields::Uuid::from(self.tenant_id))),
+                        .or(api_key::tenant_id.eq(fields::Uuid::from(self.tenant_id))),
                 );
+            }
+            // admin api key (not RO)
+            // tenant api key (not RO)
+            Flag::Update | Flag::Delete => {
+                q = q
+                    .filter(
+                        api_key::is_admin
+                            .eq(true)
+                            .or(api_key::tenant_id.eq(fields::Uuid::from(self.tenant_id))),
+                    )
+                    .filter(api_key::is_read_only.eq(false));
             }
             _ => {
                 return Ok(0);
@@ -757,28 +801,30 @@ impl Validator for ValidateApplicationsAccess {
     }
 
     async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = api_key::dsl::api_key
+        let mut q = api_key::table
             .select(dsl::count_star())
             .find(fields::Uuid::from(id))
             .into_boxed();
 
         match self.flag {
-            // admin api key
-            // tenant api key
+            // admin api key (not RO)
+            // tenant api key (not RO)
             Flag::Create => {
-                q = q.filter(
-                    api_key::dsl::is_admin
-                        .eq(true)
-                        .or(api_key::dsl::tenant_id.eq(fields::Uuid::from(self.tenant_id))),
-                );
+                q = q
+                    .filter(
+                        api_key::is_admin
+                            .eq(true)
+                            .or(api_key::tenant_id.eq(fields::Uuid::from(self.tenant_id))),
+                    )
+                    .filter(api_key::is_read_only.eq(false));
             }
             // admin api key
             // tenant api key (api will do filtering)
             Flag::List => {
                 q = q.filter(
-                    api_key::dsl::is_admin
+                    api_key::is_admin
                         .eq(true)
-                        .or(api_key::dsl::tenant_id.eq(fields::Uuid::from(self.tenant_id))),
+                        .or(api_key::tenant_id.eq(fields::Uuid::from(self.tenant_id))),
                 );
             }
             _ => {
@@ -868,28 +914,40 @@ impl Validator for ValidateApplicationAccess {
     }
 
     async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = api_key::dsl::api_key
+        let mut q = api_key::table
             .select(dsl::count_star())
-            .filter(api_key::dsl::id.eq(fields::Uuid::from(id)))
+            .filter(api_key::id.eq(fields::Uuid::from(id)))
             .into_boxed();
 
         match self.flag {
-            // admin api key
-            // tenant api key
-            Flag::Read | Flag::Update | Flag::Delete => {
+            // admin api key (not RO)
+            // tenant api key (not RO)
+            Flag::Read => {
                 q = q.filter(
-                    api_key::dsl::is_admin.eq(true).or(dsl::exists(
-                        application::dsl::application.filter(
-                            application::dsl::id
+                    api_key::is_admin.eq(true).or(dsl::exists(
+                        application::table.filter(
+                            application::id
                                 .eq(fields::Uuid::from(self.application_id))
-                                .and(
-                                    api_key::dsl::tenant_id
-                                        .eq(application::dsl::tenant_id.nullable()),
-                                ),
+                                .and(api_key::tenant_id.eq(application::tenant_id.nullable())),
                         ),
                     )),
                 );
             }
+            // admin api key
+            // tenant api key
+            Flag::Update | Flag::Delete => {
+                q = q
+                    .filter(
+                        api_key::is_admin.eq(true).or(dsl::exists(
+                            application::table.filter(
+                                application::id
+                                    .eq(fields::Uuid::from(self.application_id))
+                                    .and(api_key::tenant_id.eq(application::tenant_id.nullable())),
+                            ),
+                        )),
+                    )
+                    .filter(api_key::is_read_only.eq(false));
+            }
             _ => {
                 return Ok(0);
             }
@@ -899,119 +957,207 @@ impl Validator for ValidateApplicationAccess {
     }
 }
 
-pub struct ValidateDeviceProfileTemplatesAccess {
+pub struct ValidateDeviceProfileVendorsAccess {
     flag: Flag,
 }
 
-impl ValidateDeviceProfileTemplatesAccess {
+impl ValidateDeviceProfileVendorsAccess {
     pub fn new(flag: Flag) -> Self {
-        ValidateDeviceProfileTemplatesAccess { flag }
+        ValidateDeviceProfileVendorsAccess { flag }
     }
 }
 
 #[async_trait]
-impl Validator for ValidateDeviceProfileTemplatesAccess {
+impl Validator for ValidateDeviceProfileVendorsAccess {
     async fn validate_user(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = user::dsl::user
+        let q = user::table.select(dsl::count_star()).filter(
+            user::id
+                .eq(fields::Uuid::from(id))
+                .and(user::is_active.eq(true)),
+        );
+
+        match self.flag {
+            // active user
+            Flag::List => {}
+            _ => return Ok(0),
+        }
+
+        Ok(q.first(&mut get_async_db_conn().await?).await?)
+    }
+
+    async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
+        let q = api_key::table
+            .select(dsl::count_star())
+            .find(fields::Uuid::from(id))
+            .into_boxed();
+
+        match self.flag {
+            // any api key
+            Flag::List => {}
+            _ => return Ok(0),
+        }
+
+        Ok(q.first(&mut get_async_db_conn().await?).await?)
+    }
+}
+
+pub struct ValidateDeviceProfileVendorAccess {
+    flag: Flag,
+}
+
+impl ValidateDeviceProfileVendorAccess {
+    pub fn new(flag: Flag) -> Self {
+        ValidateDeviceProfileVendorAccess { flag }
+    }
+}
+
+#[async_trait]
+impl Validator for ValidateDeviceProfileVendorAccess {
+    async fn validate_user(&self, id: &Uuid) -> Result<i64, Error> {
+        let mut q = user::table
             .select(dsl::count_star())
             .filter(
-                user::dsl::id
+                user::id
                     .eq(fields::Uuid::from(id))
-                    .and(user::dsl::is_active.eq(true)),
+                    .and(user::is_active.eq(true)),
             )
             .into_boxed();
 
         match self.flag {
+            // active user
+            Flag::Read => {}
             // global admin
-            Flag::Create => {
-                q = q.filter(user::dsl::is_admin.eq(true));
+            Flag::Delete => {
+                q = q.filter(user::is_admin.eq(true));
             }
-            // any active user
-            Flag::List => {}
-            _ => {
-                return Ok(0);
-            }
-        };
+            _ => return Ok(0),
+        }
 
         Ok(q.first(&mut get_async_db_conn().await?).await?)
     }
 
     async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = api_key::dsl::api_key
+        let mut q = api_key::table
             .select(dsl::count_star())
-            .find(fields::Uuid::from(id))
+            .filter(api_key::id.eq(fields::Uuid::from(id)))
             .into_boxed();
 
         match self.flag {
-            // admin api key
-            Flag::Create => {
-                q = q.filter(api_key::dsl::is_admin.eq(true));
-            }
             // any api key
-            Flag::List => {}
-            _ => {
-                return Ok(0);
+            Flag::Read => {}
+            // admin api key (not RO)
+            Flag::Delete => {
+                q = q.filter(
+                    api_key::is_admin
+                        .eq(true)
+                        .and(api_key::is_read_only.eq(false)),
+                );
             }
-        };
+            _ => return Ok(0),
+        }
 
         Ok(q.first(&mut get_async_db_conn().await?).await?)
     }
 }
 
-pub struct ValidateDeviceProfileTemplateAccess {
+pub struct ValidateDeviceProfileDevicesAccess {
     flag: Flag,
 }
 
-impl ValidateDeviceProfileTemplateAccess {
+impl ValidateDeviceProfileDevicesAccess {
     pub fn new(flag: Flag) -> Self {
-        ValidateDeviceProfileTemplateAccess { flag }
+        ValidateDeviceProfileDevicesAccess { flag }
     }
 }
 
 #[async_trait]
-impl Validator for ValidateDeviceProfileTemplateAccess {
+impl Validator for ValidateDeviceProfileDevicesAccess {
     async fn validate_user(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = user::dsl::user
-            .select(dsl::count_star())
-            .filter(
-                user::dsl::id
-                    .eq(fields::Uuid::from(id))
-                    .and(user::dsl::is_active.eq(true)),
-            )
-            .into_boxed();
+        let q = user::table.select(dsl::count_star()).filter(
+            user::id
+                .eq(fields::Uuid::from(id))
+                .and(user::is_active.eq(true)),
+        );
 
         match self.flag {
-            // any active user
-            Flag::Read => {}
-            // global admin user
-            Flag::Update | Flag::Delete => {
-                q = q.filter(user::dsl::is_admin.eq(true));
-            }
-            _ => {
-                return Ok(0);
-            }
-        };
+            // active user
+            Flag::List => {}
+            _ => return Ok(0),
+        }
 
         Ok(q.first(&mut get_async_db_conn().await?).await?)
     }
 
     async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = api_key::dsl::api_key
+        let q = api_key::table
             .select(dsl::count_star())
             .find(fields::Uuid::from(id))
             .into_boxed();
 
         match self.flag {
             // any api key
+            Flag::List => {}
+            _ => return Ok(0),
+        }
+
+        Ok(q.first(&mut get_async_db_conn().await?).await?)
+    }
+}
+
+pub struct ValidateDeviceProfileDeviceAccess {
+    flag: Flag,
+}
+
+impl ValidateDeviceProfileDeviceAccess {
+    pub fn new(flag: Flag) -> Self {
+        ValidateDeviceProfileDeviceAccess { flag }
+    }
+}
+
+#[async_trait]
+impl Validator for ValidateDeviceProfileDeviceAccess {
+    async fn validate_user(&self, id: &Uuid) -> Result<i64, Error> {
+        let mut q = user::table
+            .select(dsl::count_star())
+            .filter(
+                user::id
+                    .eq(fields::Uuid::from(id))
+                    .and(user::is_active.eq(true)),
+            )
+            .into_boxed();
+
+        match self.flag {
+            // active user
+            Flag::Read => {}
+            // global admin
+            Flag::Delete => {
+                q = q.filter(user::is_admin.eq(true));
+            }
+            _ => return Ok(0),
+        }
+
+        Ok(q.first(&mut get_async_db_conn().await?).await?)
+    }
+
+    async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
+        let mut q = api_key::table
+            .select(dsl::count_star())
+            .filter(api_key::id.eq(fields::Uuid::from(id)))
+            .into_boxed();
+
+        match self.flag {
+            // any api key
             Flag::Read => {}
             // admin api key
-            Flag::Update | Flag::Delete => {
-                q = q.filter(api_key::dsl::is_admin.eq(true));
+            Flag::Delete => {
+                q = q.filter(
+                    api_key::is_admin
+                        .eq(true)
+                        .and(api_key::is_read_only.eq(false)),
+                );
             }
-            _ => {
-                return Ok(0);
-            }
-        };
+            _ => return Ok(0),
+        }
 
         Ok(q.first(&mut get_async_db_conn().await?).await?)
     }
@@ -1019,12 +1165,17 @@ impl Validator for ValidateDeviceProfileTemplateAccess {
 
 pub struct ValidateDeviceProfilesAccess {
     flag: Flag,
-    tenant_id: Uuid,
+    tenant_id: Option<Uuid>,
+    global_only: bool,
 }
 
 impl ValidateDeviceProfilesAccess {
-    pub fn new(flag: Flag, tenant_id: Uuid) -> Self {
-        ValidateDeviceProfilesAccess { flag, tenant_id }
+    pub fn new(flag: Flag, tenant_id: Option<Uuid>, global_only: bool) -> Self {
+        ValidateDeviceProfilesAccess {
+            flag,
+            tenant_id,
+            global_only,
+        }
     }
 }
 
@@ -1050,10 +1201,9 @@ impl Validator for ValidateDeviceProfilesAccess {
                         tenant_user::dsl::tenant_user.filter(
                             tenant_user::dsl::user_id
                                 .eq(user::dsl::id)
-                                .and(
-                                    tenant_user::dsl::tenant_id
-                                        .eq(fields::Uuid::from(self.tenant_id)),
-                                )
+                                .and(tenant_user::dsl::tenant_id.eq(fields::Uuid::from(
+                                    self.tenant_id.unwrap_or_else(Uuid::nil),
+                                )))
                                 .and(
                                     tenant_user::dsl::is_admin
                                         .eq(true)
@@ -1066,13 +1216,19 @@ impl Validator for ValidateDeviceProfilesAccess {
             // global admin
             // tenant user
             Flag::List => {
-                q = q.filter(user::dsl::is_admin.eq(true).or(dsl::exists(
-                    tenant_user::dsl::tenant_user.filter(
-                        tenant_user::dsl::user_id.eq(user::dsl::id).and(
-                            tenant_user::dsl::tenant_id.eq(fields::Uuid::from(self.tenant_id)),
-                        ),
-                    ),
-                )));
+                if !self.global_only {
+                    if let Some(tenant_id) = &self.tenant_id {
+                        q = q.filter(user::dsl::is_admin.eq(true).or(dsl::exists(
+                            tenant_user::dsl::tenant_user.filter(
+                                tenant_user::dsl::user_id.eq(user::dsl::id).and(
+                                    tenant_user::dsl::tenant_id.eq(fields::Uuid::from(tenant_id)),
+                                ),
+                            ),
+                        )));
+                    } else {
+                        return Ok(0);
+                    }
+                }
             }
             _ => {
                 return Ok(0);
@@ -1083,20 +1239,32 @@ impl Validator for ValidateDeviceProfilesAccess {
     }
 
     async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = api_key::dsl::api_key
+        let mut q = api_key::table
             .select(dsl::count_star())
             .find(fields::Uuid::from(id))
             .into_boxed();
 
         match self.flag {
+            // admin api key (not RO)
+            // tenant api key (for tenant_id) (not RO)
+            Flag::Create => {
+                q = q
+                    .filter(
+                        api_key::is_admin.eq(true).or(api_key::tenant_id
+                            .eq(fields::Uuid::from(self.tenant_id.unwrap_or_else(Uuid::nil)))),
+                    )
+                    .filter(api_key::is_read_only.eq(false));
+            }
             // admin api key
-            // tenant api key
-            Flag::Create | Flag::List => {
-                q = q.filter(
-                    api_key::dsl::is_admin
-                        .eq(true)
-                        .or(api_key::dsl::tenant_id.eq(fields::Uuid::from(self.tenant_id))),
-                );
+            // tenant api key (tenant device-profiles)
+            // tenant api key (global device-profiles)
+            Flag::List => {
+                if !self.global_only {
+                    q = q.filter(
+                        api_key::is_admin.eq(true).or(api_key::tenant_id
+                            .eq(fields::Uuid::from(self.tenant_id.unwrap_or_else(Uuid::nil)))),
+                    );
+                }
             }
             _ => {
                 return Ok(0);
@@ -1137,44 +1305,54 @@ impl Validator for ValidateDeviceProfileAccess {
             // global admin
             // tenant user
             Flag::Read => {
-                q =
-                    q.filter(
-                        user::dsl::is_admin.eq(true).or(dsl::exists(
-                            device_profile::dsl::device_profile
-                                .inner_join(tenant_user::table.on(
-                                    tenant_user::dsl::tenant_id.eq(device_profile::dsl::tenant_id),
-                                ))
-                                .filter(
-                                    device_profile::dsl::id
-                                        .eq(fields::Uuid::from(self.device_profile_id))
-                                        .and(tenant_user::dsl::user_id.eq(user::dsl::id)),
-                                ),
-                        )),
-                    );
+                q = q.filter(
+                    user::dsl::is_admin.eq(true).or(dsl::exists(
+                        // Global device-profile
+                        device_profile::dsl::device_profile.filter(
+                            device_profile::dsl::id
+                                .eq(fields::Uuid::from(self.device_profile_id))
+                                .and(device_profile::dsl::tenant_id.is_null()),
+                        ),
+                    )
+                    .or(dsl::exists(
+                        // Tenant device-profile
+                        device_profile::dsl::device_profile
+                            .inner_join(
+                                tenant_user::table.on(tenant_user::dsl::tenant_id
+                                    .eq(device_profile::dsl::tenant_id.assume_not_null())),
+                            )
+                            .filter(
+                                device_profile::dsl::id
+                                    .eq(fields::Uuid::from(self.device_profile_id))
+                                    .and(tenant_user::dsl::user_id.eq(user::dsl::id)),
+                            ),
+                    ))),
+                );
             }
             // global admin
             // tenant admin user
             // tenant device admin
             Flag::Update | Flag::Delete => {
-                q =
-                    q.filter(
-                        user::dsl::is_admin.eq(true).or(dsl::exists(
-                            device_profile::dsl::device_profile
-                                .inner_join(tenant_user::table.on(
-                                    tenant_user::dsl::tenant_id.eq(device_profile::dsl::tenant_id),
-                                ))
-                                .filter(
-                                    device_profile::dsl::id
-                                        .eq(fields::Uuid::from(self.device_profile_id))
-                                        .and(tenant_user::dsl::user_id.eq(user::dsl::id))
-                                        .and(
-                                            tenant_user::dsl::is_admin
-                                                .eq(true)
-                                                .or(tenant_user::dsl::is_device_admin.eq(true)),
-                                        ),
-                                ),
-                        )),
-                    );
+                q = q.filter(
+                    user::dsl::is_admin.eq(true).or(dsl::exists(
+                        // For non-admins, it must always be a profile with tenant_id.
+                        device_profile::dsl::device_profile
+                            .inner_join(
+                                tenant_user::table.on(tenant_user::dsl::tenant_id
+                                    .eq(device_profile::dsl::tenant_id.assume_not_null())),
+                            )
+                            .filter(
+                                device_profile::dsl::id
+                                    .eq(fields::Uuid::from(self.device_profile_id))
+                                    .and(tenant_user::dsl::user_id.eq(user::dsl::id))
+                                    .and(
+                                        tenant_user::dsl::is_admin
+                                            .eq(true)
+                                            .or(tenant_user::dsl::is_device_admin.eq(true)),
+                                    ),
+                            ),
+                    )),
+                );
             }
             _ => {
                 return Ok(0);
@@ -1185,27 +1363,44 @@ impl Validator for ValidateDeviceProfileAccess {
     }
 
     async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = api_key::dsl::api_key
+        let mut q = api_key::table
             .select(dsl::count_star())
             .filter(api_key::dsl::id.eq(fields::Uuid::from(id)))
             .into_boxed();
 
         match self.flag {
-            // admin api key
+            // Admin api key
             // tenant api key
-            Flag::Read | Flag::Update | Flag::Delete => {
+            Flag::Read => {
                 q = q.filter(
-                    api_key::dsl::is_admin.eq(true).or(dsl::exists(
-                        device_profile::dsl::device_profile.filter(
-                            device_profile::dsl::id
+                    api_key::is_admin.eq(true).or(dsl::exists(
+                        device_profile::table.filter(
+                            device_profile::id
                                 .eq(fields::Uuid::from(self.device_profile_id))
                                 .and(
-                                    api_key::dsl::tenant_id
-                                        .eq(device_profile::dsl::tenant_id.nullable()),
+                                    device_profile::tenant_id
+                                        .is_null()
+                                        .or(device_profile::tenant_id.eq(api_key::tenant_id)),
                                 ),
                         ),
                     )),
                 );
+            }
+            // Admin api key (can update all device-profiles) (not RO)
+            // Tenant api key (can update / delete only device-profiles with equal tenant_id) (not
+            // RO)
+            Flag::Update | Flag::Delete => {
+                q = q
+                    .filter(
+                        api_key::is_admin.eq(true).or(dsl::exists(
+                            device_profile::table.filter(
+                                device_profile::id
+                                    .eq(fields::Uuid::from(self.device_profile_id))
+                                    .and(device_profile::tenant_id.eq(api_key::tenant_id)),
+                            ),
+                        )),
+                    )
+                    .filter(api_key::is_read_only.eq(false));
             }
             _ => {
                 return Ok(0);
@@ -1294,15 +1489,30 @@ impl Validator for ValidateDevicesAccess {
     }
 
     async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = api_key::dsl::api_key
+        let mut q = api_key::table
             .select(dsl::count_star())
-            .filter(api_key::dsl::id.eq(fields::Uuid::from(id)))
+            .filter(api_key::id.eq(fields::Uuid::from(id)))
             .into_boxed();
 
         match self.flag {
+            // admin api key (not RO)
+            // tenant api key (not RO)
+            Flag::Create => {
+                q = q
+                    .filter(
+                        api_key::is_admin.eq(true).or(dsl::exists(
+                            application::table.filter(
+                                application::id
+                                    .eq(fields::Uuid::from(self.application_id))
+                                    .and(api_key::tenant_id.eq(application::tenant_id.nullable())),
+                            ),
+                        )),
+                    )
+                    .filter(api_key::is_read_only.eq(false));
+            }
             // admin api key
             // tenant api key
-            Flag::Create | Flag::List => {
+            Flag::List => {
                 q = q.filter(
                     api_key::dsl::is_admin.eq(true).or(dsl::exists(
                         application::dsl::application.filter(
@@ -1402,22 +1612,39 @@ impl Validator for ValidateDeviceAccess {
     }
 
     async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = api_key::dsl::api_key
+        let mut q = api_key::table
             .select(dsl::count_star())
-            .filter(api_key::dsl::id.eq(fields::Uuid::from(id)))
+            .filter(api_key::id.eq(fields::Uuid::from(id)))
             .into_boxed();
 
         match self.flag {
             // admin api key
             // tenant api key
-            Flag::Read | Flag::Update | Flag::Delete => {
-                q = q.filter(api_key::dsl::is_admin.eq(true).or(dsl::exists(
-                    device::dsl::device.inner_join(application::table).filter(
-                        device::dsl::dev_eui.eq(self.dev_eui).and(
-                            api_key::dsl::tenant_id.eq(application::dsl::tenant_id.nullable()),
+            Flag::Read => {
+                q = q.filter(
+                    api_key::is_admin.eq(true).or(dsl::exists(
+                        device::table.inner_join(application::table).filter(
+                            device::dev_eui
+                                .eq(self.dev_eui)
+                                .and(api_key::tenant_id.eq(application::tenant_id.nullable())),
                         ),
-                    ),
-                )))
+                    )),
+                );
+            }
+            // admin api key (not RO)
+            // tenant api key (not RO)
+            Flag::Update | Flag::Delete => {
+                q = q
+                    .filter(
+                        api_key::is_admin.eq(true).or(dsl::exists(
+                            device::table.inner_join(application::table).filter(
+                                device::dev_eui
+                                    .eq(self.dev_eui)
+                                    .and(api_key::tenant_id.eq(application::tenant_id.nullable())),
+                            ),
+                        )),
+                    )
+                    .filter(api_key::is_read_only.eq(false));
             }
             _ => {
                 return Ok(0);
@@ -1480,22 +1707,39 @@ impl Validator for ValidateDeviceQueueAccess {
     }
 
     async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = api_key::dsl::api_key
+        let mut q = api_key::table
             .select(dsl::count_star())
-            .filter(api_key::dsl::id.eq(fields::Uuid::from(id)))
+            .filter(api_key::id.eq(fields::Uuid::from(id)))
             .into_boxed();
 
         match self.flag {
             // admin api key
             // tenant api key
-            Flag::Create | Flag::List | Flag::Delete => {
-                q = q.filter(api_key::dsl::is_admin.eq(true).or(dsl::exists(
-                    device::dsl::device.inner_join(application::table).filter(
-                        device::dsl::dev_eui.eq(&self.dev_eui).and(
-                            api_key::dsl::tenant_id.eq(application::dsl::tenant_id.nullable()),
+            Flag::List => {
+                q = q.filter(
+                    api_key::is_admin.eq(true).or(dsl::exists(
+                        device::table.inner_join(application::table).filter(
+                            device::dev_eui
+                                .eq(&self.dev_eui)
+                                .and(api_key::tenant_id.eq(application::tenant_id.nullable())),
                         ),
-                    ),
-                )));
+                    )),
+                );
+            }
+            // admin api key (not RO)
+            // tenant api key (not RO)
+            Flag::Create | Flag::Delete => {
+                q = q
+                    .filter(
+                        api_key::is_admin.eq(true).or(dsl::exists(
+                            device::table.inner_join(application::table).filter(
+                                device::dev_eui
+                                    .eq(&self.dev_eui)
+                                    .and(api_key::tenant_id.eq(application::tenant_id.nullable())),
+                            ),
+                        )),
+                    )
+                    .filter(api_key::is_read_only.eq(false));
             }
             _ => {
                 return Ok(0);
@@ -1571,7 +1815,7 @@ impl Validator for ValidateGatewaysAccess {
     }
 
     async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = api_key::dsl::api_key
+        let mut q = api_key::table
             .select(dsl::count_star())
             .find(fields::Uuid::from(id))
             .into_boxed();
@@ -1579,11 +1823,20 @@ impl Validator for ValidateGatewaysAccess {
         match self.flag {
             // admin api key
             // tenant api key
-            Flag::Create | Flag::List => {
+            Flag::Create => {
+                q = q
+                    .filter(
+                        api_key::is_admin
+                            .eq(true)
+                            .or(api_key::tenant_id.eq(fields::Uuid::from(self.tenant_id))),
+                    )
+                    .filter(api_key::is_read_only.eq(false));
+            }
+            Flag::List => {
                 q = q.filter(
-                    api_key::dsl::is_admin
+                    api_key::is_admin
                         .eq(true)
-                        .or(api_key::dsl::tenant_id.eq(fields::Uuid::from(self.tenant_id))),
+                        .or(api_key::tenant_id.eq(fields::Uuid::from(self.tenant_id))),
                 );
             }
             _ => {
@@ -1670,23 +1923,39 @@ impl Validator for ValidateGatewayAccess {
     }
 
     async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = api_key::dsl::api_key
+        let mut q = api_key::table
             .select(dsl::count_star())
-            .filter(api_key::dsl::id.eq(fields::Uuid::from(id)))
+            .filter(api_key::id.eq(fields::Uuid::from(id)))
             .into_boxed();
 
         match self.flag {
             // admin api key
             // tenant api key
-            Flag::Read | Flag::Update | Flag::Delete => {
-                q =
-                    q.filter(api_key::dsl::is_admin.eq(true).or(dsl::exists(
-                        gateway::dsl::gateway.filter(
-                            gateway::dsl::gateway_id.eq(&self.gateway_id).and(
-                                api_key::dsl::tenant_id.eq(gateway::dsl::tenant_id.nullable()),
-                            ),
+            Flag::Read => {
+                q = q.filter(
+                    api_key::is_admin.eq(true).or(dsl::exists(
+                        gateway::table.filter(
+                            gateway::gateway_id
+                                .eq(&self.gateway_id)
+                                .and(api_key::tenant_id.eq(gateway::tenant_id.nullable())),
                         ),
-                    )));
+                    )),
+                );
+            }
+            // admin api key (not RO)
+            // tenant api key (not RO)
+            Flag::Update | Flag::Delete => {
+                q = q
+                    .filter(
+                        api_key::is_admin.eq(true).or(dsl::exists(
+                            gateway::table.filter(
+                                gateway::gateway_id
+                                    .eq(&self.gateway_id)
+                                    .and(api_key::tenant_id.eq(gateway::tenant_id.nullable())),
+                            ),
+                        )),
+                    )
+                    .filter(api_key::is_read_only.eq(false));
             }
             _ => {
                 return Ok(0);
@@ -1699,13 +1968,15 @@ impl Validator for ValidateGatewayAccess {
 
 pub struct ValidateMulticastGroupsAccess {
     flag: Flag,
-    application_id: Uuid,
+    tenant_id: Option<Uuid>,
+    application_id: Option<Uuid>,
 }
 
 impl ValidateMulticastGroupsAccess {
-    pub fn new(flag: Flag, application_id: Uuid) -> Self {
+    pub fn new(flag: Flag, tenant_id: Option<Uuid>, application_id: Option<Uuid>) -> Self {
         ValidateMulticastGroupsAccess {
             flag,
+            tenant_id,
             application_id,
         }
     }
@@ -1714,12 +1985,12 @@ impl ValidateMulticastGroupsAccess {
 #[async_trait]
 impl Validator for ValidateMulticastGroupsAccess {
     async fn validate_user(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = user::dsl::user
+        let mut q = user::table
             .select(dsl::count_star())
             .filter(
-                user::dsl::id
+                user::id
                     .eq(fields::Uuid::from(id))
-                    .and(user::dsl::is_active.eq(true)),
+                    .and(user::is_active.eq(true)),
             )
             .into_boxed();
 
@@ -1728,43 +1999,46 @@ impl Validator for ValidateMulticastGroupsAccess {
             // tenant admin
             // tenant device admin
             Flag::Create => {
-                q =
-                    q.filter(
-                        user::dsl::is_admin.eq(true).or(dsl::exists(
-                            application::dsl::application
-                                .inner_join(tenant_user::table.on(
-                                    tenant_user::dsl::tenant_id.eq(application::dsl::tenant_id),
-                                ))
-                                .filter(
-                                    application::dsl::id
-                                        .eq(fields::Uuid::from(self.application_id))
-                                        .and(tenant_user::dsl::user_id.eq(user::dsl::id))
-                                        .and(
-                                            tenant_user::dsl::is_admin
-                                                .eq(true)
-                                                .or(tenant_user::dsl::is_device_admin.eq(true)),
-                                        ),
-                                ),
-                        )),
-                    );
+                q = q.filter(
+                    user::is_admin.eq(true).or(dsl::exists(
+                        application::table
+                            .inner_join(
+                                tenant_user::table
+                                    .on(tenant_user::tenant_id.eq(application::tenant_id)),
+                            )
+                            .filter(
+                                application::id
+                                    .eq(fields::Uuid::from(self.application_id.unwrap_or_default()))
+                                    .and(tenant_user::user_id.eq(user::id))
+                                    .and(
+                                        tenant_user::is_admin
+                                            .eq(true)
+                                            .or(tenant_user::is_device_admin.eq(true)),
+                                    ),
+                            ),
+                    )),
+                );
             }
             // admin user
-            // tenant user
+            // tenant user (based on tenant_id or application_id)
             Flag::List => {
-                q =
-                    q.filter(
-                        user::dsl::is_admin.eq(true).or(dsl::exists(
-                            application::dsl::application
-                                .inner_join(tenant_user::table.on(
-                                    tenant_user::dsl::tenant_id.eq(application::dsl::tenant_id),
-                                ))
-                                .filter(
-                                    application::dsl::id
-                                        .eq(fields::Uuid::from(self.application_id))
-                                        .and(tenant_user::dsl::user_id.eq(user::dsl::id)),
-                                ),
-                        )),
-                    );
+                q = q.filter(
+                    user::is_admin.eq(true).or(dsl::exists(
+                        application::table
+                            .inner_join(
+                                tenant_user::table
+                                    .on(tenant_user::tenant_id.eq(application::tenant_id)),
+                            )
+                            .filter(
+                                application::id
+                                    .eq(fields::Uuid::from(self.application_id.unwrap_or_default()))
+                                    .or(tenant_user::tenant_id.eq(fields::Uuid::from(
+                                        self.tenant_id.unwrap_or_default(),
+                                    ))),
+                            )
+                            .filter(tenant_user::user_id.eq(user::id)),
+                    )),
+                );
             }
             _ => {
                 return Ok(0);
@@ -1775,25 +2049,41 @@ impl Validator for ValidateMulticastGroupsAccess {
     }
 
     async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = api_key::dsl::api_key
+        let mut q = api_key::table
             .select(dsl::count_star())
-            .filter(api_key::dsl::id.eq(fields::Uuid::from(id)))
+            .filter(api_key::id.eq(fields::Uuid::from(id)))
             .into_boxed();
 
         match self.flag {
+            // admin api key (not RO)
+            // tenant api key (not RO)
+            Flag::Create => {
+                q = q
+                    .filter(
+                        api_key::is_admin.eq(true).or(dsl::exists(
+                            application::table.filter(
+                                application::id
+                                    .eq(fields::Uuid::from(self.application_id.unwrap_or_default()))
+                                    .and(api_key::tenant_id.eq(application::tenant_id.nullable())),
+                            ),
+                        )),
+                    )
+                    .filter(api_key::is_read_only.eq(false));
+            }
             // admin api key
-            // tenant api key
-            Flag::Create | Flag::List => {
+            // tenant api key (based on tenant_id or application_id)
+            Flag::List => {
                 q = q.filter(
-                    api_key::dsl::is_admin.eq(true).or(dsl::exists(
-                        application::dsl::application.filter(
-                            application::dsl::id
-                                .eq(fields::Uuid::from(self.application_id))
-                                .and(
-                                    api_key::dsl::tenant_id
-                                        .eq(application::dsl::tenant_id.nullable()),
-                                ),
-                        ),
+                    api_key::is_admin.eq(true).or(dsl::exists(
+                        application::table
+                            .filter(
+                                application::id
+                                    .eq(fields::Uuid::from(self.application_id.unwrap_or_default()))
+                                    .or(api_key::tenant_id.eq(fields::Uuid::from(
+                                        self.tenant_id.unwrap_or_default(),
+                                    ))),
+                            )
+                            .filter(api_key::tenant_id.eq(application::tenant_id.nullable())),
                     )),
                 );
             }
@@ -1886,29 +2176,46 @@ impl Validator for ValidateMulticastGroupAccess {
     }
 
     async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = api_key::dsl::api_key
+        let mut q = api_key::table
             .select(dsl::count_star())
-            .filter(api_key::dsl::id.eq(fields::Uuid::from(id)))
+            .filter(api_key::id.eq(fields::Uuid::from(id)))
             .into_boxed();
 
         match self.flag {
             // admin api key
             // tenant api key
-            Flag::Read | Flag::Update | Flag::Delete => {
+            Flag::Read => {
                 q = q.filter(
-                    api_key::dsl::is_admin.eq(true).or(dsl::exists(
-                        multicast_group::dsl::multicast_group
+                    api_key::is_admin.eq(true).or(dsl::exists(
+                        multicast_group::table
                             .inner_join(application::table)
                             .filter(
-                                multicast_group::dsl::id
+                                multicast_group::id
                                     .eq(fields::Uuid::from(self.multicast_group_id))
-                                    .and(
-                                        api_key::dsl::tenant_id
-                                            .eq(application::dsl::tenant_id.nullable()),
-                                    ),
+                                    .and(api_key::tenant_id.eq(application::tenant_id.nullable())),
                             ),
                     )),
                 );
+            }
+            // admin api key (not RO)
+            // tenant api key (not RO)
+            Flag::Update | Flag::Delete => {
+                q = q
+                    .filter(
+                        api_key::is_admin.eq(true).or(dsl::exists(
+                            multicast_group::table
+                                .inner_join(application::table)
+                                .filter(
+                                    multicast_group::id
+                                        .eq(fields::Uuid::from(self.multicast_group_id))
+                                        .and(
+                                            api_key::tenant_id
+                                                .eq(application::tenant_id.nullable()),
+                                        ),
+                                ),
+                        )),
+                    )
+                    .filter(api_key::is_read_only.eq(false));
             }
             _ => {
                 return Ok(0);
@@ -1999,29 +2306,46 @@ impl Validator for ValidateMulticastGroupQueueAccess {
     }
 
     async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = api_key::dsl::api_key
+        let mut q = api_key::table
             .select(dsl::count_star())
-            .filter(api_key::dsl::id.eq(fields::Uuid::from(id)))
+            .filter(api_key::id.eq(fields::Uuid::from(id)))
             .into_boxed();
 
         match self.flag {
             // admin api key
             // tenant api key
-            Flag::Create | Flag::List | Flag::Delete => {
+            Flag::List => {
                 q = q.filter(
-                    api_key::dsl::is_admin.eq(true).or(dsl::exists(
-                        multicast_group::dsl::multicast_group
+                    api_key::is_admin.eq(true).or(dsl::exists(
+                        multicast_group::table
                             .inner_join(application::table)
                             .filter(
-                                multicast_group::dsl::id
+                                multicast_group::id
                                     .eq(fields::Uuid::from(self.multicast_group_id))
-                                    .and(
-                                        api_key::dsl::tenant_id
-                                            .eq(application::dsl::tenant_id.nullable()),
-                                    ),
+                                    .and(api_key::tenant_id.eq(application::tenant_id.nullable())),
                             ),
                     )),
                 );
+            }
+            // admin api key (not RO)
+            // tenant api key (not RO)
+            Flag::Create | Flag::Delete => {
+                q = q
+                    .filter(
+                        api_key::is_admin.eq(true).or(dsl::exists(
+                            multicast_group::table
+                                .inner_join(application::table)
+                                .filter(
+                                    multicast_group::id
+                                        .eq(fields::Uuid::from(self.multicast_group_id))
+                                        .and(
+                                            api_key::tenant_id
+                                                .eq(application::tenant_id.nullable()),
+                                        ),
+                                ),
+                        )),
+                    )
+                    .filter(api_key::is_read_only.eq(false));
             }
             _ => {
                 return Ok(0);
@@ -2034,13 +2358,15 @@ impl Validator for ValidateMulticastGroupQueueAccess {
 
 pub struct ValidateFuotaDeploymentsAccess {
     flag: Flag,
-    application_id: Uuid,
+    tenant_id: Option<Uuid>,
+    application_id: Option<Uuid>,
 }
 
 impl ValidateFuotaDeploymentsAccess {
-    pub fn new(flag: Flag, application_id: Uuid) -> Self {
+    pub fn new(flag: Flag, tenant_id: Option<Uuid>, application_id: Option<Uuid>) -> Self {
         ValidateFuotaDeploymentsAccess {
             flag,
+            tenant_id,
             application_id,
         }
     }
@@ -2049,12 +2375,12 @@ impl ValidateFuotaDeploymentsAccess {
 #[async_trait]
 impl Validator for ValidateFuotaDeploymentsAccess {
     async fn validate_user(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = user::dsl::user
+        let mut q = user::table
             .select(dsl::count_star())
             .filter(
-                user::dsl::id
+                user::id
                     .eq(fields::Uuid::from(id))
-                    .and(user::dsl::is_active.eq(true)),
+                    .and(user::is_active.eq(true)),
             )
             .into_boxed();
 
@@ -2063,43 +2389,46 @@ impl Validator for ValidateFuotaDeploymentsAccess {
             // tenant admin
             // tenant device admin
             Flag::Create => {
-                q =
-                    q.filter(
-                        user::dsl::is_admin.eq(true).or(dsl::exists(
-                            application::dsl::application
-                                .inner_join(tenant_user::table.on(
-                                    tenant_user::dsl::tenant_id.eq(application::dsl::tenant_id),
-                                ))
-                                .filter(
-                                    application::dsl::id
-                                        .eq(fields::Uuid::from(self.application_id))
-                                        .and(tenant_user::dsl::user_id.eq(user::dsl::id))
-                                        .and(
-                                            tenant_user::dsl::is_admin
-                                                .eq(true)
-                                                .or(tenant_user::dsl::is_device_admin.eq(true)),
-                                        ),
-                                ),
-                        )),
-                    );
+                q = q.filter(
+                    user::is_admin.eq(true).or(dsl::exists(
+                        application::table
+                            .inner_join(
+                                tenant_user::table
+                                    .on(tenant_user::tenant_id.eq(application::tenant_id)),
+                            )
+                            .filter(
+                                application::id
+                                    .eq(fields::Uuid::from(self.application_id.unwrap_or_default()))
+                                    .and(tenant_user::user_id.eq(user::id))
+                                    .and(
+                                        tenant_user::is_admin
+                                            .eq(true)
+                                            .or(tenant_user::is_device_admin.eq(true)),
+                                    ),
+                            ),
+                    )),
+                );
             }
             // admin user
             // tenant user
             Flag::List => {
-                q =
-                    q.filter(
-                        user::dsl::is_admin.eq(true).or(dsl::exists(
-                            application::dsl::application
-                                .inner_join(tenant_user::table.on(
-                                    tenant_user::dsl::tenant_id.eq(application::dsl::tenant_id),
-                                ))
-                                .filter(
-                                    application::dsl::id
-                                        .eq(fields::Uuid::from(self.application_id))
-                                        .and(tenant_user::dsl::user_id.eq(user::dsl::id)),
-                                ),
-                        )),
-                    );
+                q = q.filter(
+                    user::is_admin.eq(true).or(dsl::exists(
+                        application::table
+                            .inner_join(
+                                tenant_user::table
+                                    .on(tenant_user::tenant_id.eq(application::tenant_id)),
+                            )
+                            .filter(
+                                application::id
+                                    .eq(fields::Uuid::from(self.application_id.unwrap_or_default()))
+                                    .or(application::tenant_id.eq(fields::Uuid::from(
+                                        self.tenant_id.unwrap_or_default(),
+                                    ))),
+                            )
+                            .filter(tenant_user::user_id.eq(user::id)),
+                    )),
+                );
             }
             _ => return Ok(0),
         }
@@ -2108,25 +2437,41 @@ impl Validator for ValidateFuotaDeploymentsAccess {
     }
 
     async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = api_key::dsl::api_key
+        let mut q = api_key::table
             .select(dsl::count_star())
-            .filter(api_key::dsl::id.eq(fields::Uuid::from(id)))
+            .filter(api_key::id.eq(fields::Uuid::from(id)))
             .into_boxed();
 
         match self.flag {
+            // admin api key (not RO)
+            // tenant api key (not RO)
+            Flag::Create => {
+                q = q
+                    .filter(
+                        api_key::is_admin.eq(true).or(dsl::exists(
+                            application::table
+                                .filter(application::id.eq(fields::Uuid::from(
+                                    self.application_id.unwrap_or_default(),
+                                )))
+                                .filter(api_key::tenant_id.eq(application::tenant_id.nullable())),
+                        )),
+                    )
+                    .filter(api_key::is_read_only.eq(false));
+            }
             // admin api key
             // tenant api key
-            Flag::Create | Flag::List => {
+            Flag::List => {
                 q = q.filter(
-                    api_key::dsl::is_admin.eq(true).or(dsl::exists(
-                        application::dsl::application.filter(
-                            application::dsl::id
-                                .eq(fields::Uuid::from(self.application_id))
-                                .and(
-                                    api_key::dsl::tenant_id
-                                        .eq(application::dsl::tenant_id.nullable()),
-                                ),
-                        ),
+                    api_key::is_admin.eq(true).or(dsl::exists(
+                        application::table
+                            .filter(
+                                application::id
+                                    .eq(fields::Uuid::from(self.application_id.unwrap_or_default()))
+                                    .or(application::tenant_id.eq(fields::Uuid::from(
+                                        self.tenant_id.unwrap_or_default(),
+                                    ))),
+                            )
+                            .filter(api_key::tenant_id.eq(application::tenant_id.nullable())),
                     )),
                 );
             }
@@ -2217,29 +2562,46 @@ impl Validator for ValidateFuotaDeploymentAccess {
     }
 
     async fn validate_key(&self, id: &Uuid) -> Result<i64, Error> {
-        let mut q = api_key::dsl::api_key
+        let mut q = api_key::table
             .select(dsl::count_star())
-            .filter(api_key::dsl::id.eq(fields::Uuid::from(id)))
+            .filter(api_key::id.eq(fields::Uuid::from(id)))
             .into_boxed();
 
         match self.flag {
             // admin api key
             // tenant api key
-            Flag::Read | Flag::Update | Flag::Delete => {
+            Flag::Read => {
                 q = q.filter(
-                    api_key::dsl::is_admin.eq(true).or(dsl::exists(
-                        fuota_deployment::dsl::fuota_deployment
+                    api_key::is_admin.eq(true).or(dsl::exists(
+                        fuota_deployment::table
                             .inner_join(application::table)
                             .filter(
-                                fuota_deployment::dsl::id
+                                fuota_deployment::id
                                     .eq(fields::Uuid::from(self.fuota_deployment_id))
-                                    .and(
-                                        api_key::dsl::tenant_id
-                                            .eq(application::dsl::tenant_id.nullable()),
-                                    ),
+                                    .and(api_key::tenant_id.eq(application::tenant_id.nullable())),
                             ),
                     )),
                 );
+            }
+            // admin api key (not RO)
+            // tenant api key (not RO)
+            Flag::Update | Flag::Delete => {
+                q = q
+                    .filter(
+                        api_key::dsl::is_admin.eq(true).or(dsl::exists(
+                            fuota_deployment::table
+                                .inner_join(application::table)
+                                .filter(
+                                    fuota_deployment::id
+                                        .eq(fields::Uuid::from(self.fuota_deployment_id))
+                                        .and(
+                                            api_key::tenant_id
+                                                .eq(application::tenant_id.nullable()),
+                                        ),
+                                ),
+                        )),
+                    )
+                    .filter(api_key::is_read_only.eq(false));
             }
             _ => return Ok(0),
         }
@@ -2478,7 +2840,25 @@ pub mod test {
         let tenant_a = tenant::test::create_tenant().await;
 
         let api_key_admin = api_key::test::create_api_key(true, false).await;
+        let api_key_admin_ro = api_key::create(api_key::ApiKey {
+            name: api_key_admin.name.clone(),
+            is_admin: api_key_admin.is_admin,
+            tenant_id: api_key_admin.tenant_id,
+            is_read_only: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
         let api_key_tenant = api_key::test::create_api_key(false, true).await;
+        let api_key_tenant_ro = api_key::create(api_key::ApiKey {
+            name: api_key_tenant.name.clone(),
+            is_admin: api_key_tenant.is_admin,
+            tenant_id: api_key_tenant.tenant_id,
+            is_read_only: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
 
         tenant::add_user(tenant::TenantUser {
             tenant_id: tenant_a.id,
@@ -2553,6 +2933,12 @@ pub mod test {
                 id: AuthID::Key(api_key_admin.id.into()),
                 ok: true,
             },
+            // admin RO key can not create
+            ValidatorTest {
+                validators: vec![ValidateTenantsAccess::new(Flag::Create)],
+                id: AuthID::Key(api_key_admin_ro.id.into()),
+                ok: false,
+            },
             // tenant api can not create or list
             ValidatorTest {
                 validators: vec![
@@ -2560,6 +2946,12 @@ pub mod test {
                     ValidateTenantsAccess::new(Flag::List),
                 ],
                 id: AuthID::Key(api_key_tenant.id.into()),
+                ok: false,
+            },
+            // tenant RO api key can not create
+            ValidatorTest {
+                validators: vec![ValidateTenantsAccess::new(Flag::Create)],
+                id: AuthID::Key(api_key_tenant_ro.id.into()),
                 ok: false,
             },
         ];
@@ -2592,43 +2984,31 @@ pub mod test {
             },
             // tenant admin can not update
             ValidatorTest {
-                validators: vec![ValidateTenantAccess::new(Flag::Update, tenant_a.id.into())],
-                id: AuthID::User(tenant_admin.id.into()),
-                ok: false,
-            },
-            // tenant admin can not delete
-            ValidatorTest {
-                validators: vec![ValidateTenantAccess::new(Flag::Delete, tenant_a.id.into())],
+                validators: vec![
+                    ValidateTenantAccess::new(Flag::Update, tenant_a.id.into()),
+                    ValidateTenantAccess::new(Flag::Delete, tenant_a.id.into()),
+                ],
                 id: AuthID::User(tenant_admin.id.into()),
                 ok: false,
             },
             // tenant user can not update
             ValidatorTest {
-                validators: vec![ValidateTenantAccess::new(Flag::Update, tenant_a.id.into())],
-                id: AuthID::User(tenant_user.id.into()),
-                ok: false,
-            },
-            // tenant user can not delete
-            ValidatorTest {
-                validators: vec![ValidateTenantAccess::new(Flag::Delete, tenant_a.id.into())],
+                validators: vec![
+                    ValidateTenantAccess::new(Flag::Update, tenant_a.id.into()),
+                    ValidateTenantAccess::new(Flag::Delete, tenant_a.id.into()),
+                ],
                 id: AuthID::User(tenant_user.id.into()),
                 ok: false,
             },
             // normal user can not read
-            ValidatorTest {
-                validators: vec![ValidateTenantAccess::new(Flag::Read, tenant_a.id.into())],
-                id: AuthID::User(user.id.into()),
-                ok: false,
-            },
-            // normal user can not update
-            ValidatorTest {
-                validators: vec![ValidateTenantAccess::new(Flag::Update, tenant_a.id.into())],
-                id: AuthID::User(user.id.into()),
-                ok: false,
-            },
+            // normal user can not udate
             // normal user can not delete
             ValidatorTest {
-                validators: vec![ValidateTenantAccess::new(Flag::Delete, tenant_a.id.into())],
+                validators: vec![
+                    ValidateTenantAccess::new(Flag::Read, tenant_a.id.into()),
+                    ValidateTenantAccess::new(Flag::Update, tenant_a.id.into()),
+                    ValidateTenantAccess::new(Flag::Delete, tenant_a.id.into()),
+                ],
                 id: AuthID::User(user.id.into()),
                 ok: false,
             },
@@ -2657,21 +3037,45 @@ pub mod test {
                 ok: true,
             },
             // tenant api key can not update
+            // tenant api key can not delete
             ValidatorTest {
-                validators: vec![ValidateTenantAccess::new(
-                    Flag::Update,
-                    api_key_tenant.tenant_id.unwrap().into(),
-                )],
+                validators: vec![
+                    ValidateTenantAccess::new(
+                        Flag::Update,
+                        api_key_tenant.tenant_id.unwrap().into(),
+                    ),
+                    ValidateTenantAccess::new(
+                        Flag::Delete,
+                        api_key_tenant.tenant_id.unwrap().into(),
+                    ),
+                ],
                 id: AuthID::Key(api_key_tenant.id.into()),
                 ok: false,
             },
-            // tenant api key can not delete
+            // RO admin api key can not update
+            // RO admin api key can not delete
             ValidatorTest {
-                validators: vec![ValidateTenantAccess::new(
-                    Flag::Delete,
-                    api_key_tenant.tenant_id.unwrap().into(),
-                )],
-                id: AuthID::Key(api_key_tenant.id.into()),
+                validators: vec![
+                    ValidateTenantAccess::new(Flag::Update, tenant_a.id.into()),
+                    ValidateTenantAccess::new(Flag::Delete, tenant_a.id.into()),
+                ],
+                id: AuthID::Key(api_key_tenant_ro.id.into()),
+                ok: false,
+            },
+            // RO tenant api key can not update
+            // RO tenant api key can not delete
+            ValidatorTest {
+                validators: vec![
+                    ValidateTenantAccess::new(
+                        Flag::Update,
+                        api_key_tenant_ro.tenant_id.unwrap().into(),
+                    ),
+                    ValidateTenantAccess::new(
+                        Flag::Delete,
+                        api_key_tenant_ro.tenant_id.unwrap().into(),
+                    ),
+                ],
+                id: AuthID::Key(api_key_tenant_ro.id.into()),
                 ok: false,
             },
         ];
@@ -2722,7 +3126,25 @@ pub mod test {
         let tenant_a = tenant::test::create_tenant().await;
 
         let api_key_admin = api_key::test::create_api_key(true, false).await;
+        let api_key_admin_ro = api_key::create(api_key::ApiKey {
+            name: api_key_admin.name.clone(),
+            is_admin: api_key_admin.is_admin,
+            tenant_id: api_key_admin.tenant_id,
+            is_read_only: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
         let api_key_tenant = api_key::test::create_api_key(false, true).await;
+        let api_key_tenant_ro = api_key::create(api_key::ApiKey {
+            name: api_key_tenant.name.clone(),
+            is_admin: api_key_tenant.is_admin,
+            tenant_id: api_key_tenant.tenant_id,
+            is_read_only: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
 
         tenant::add_user(tenant::TenantUser {
             tenant_id: tenant_a.id,
@@ -2838,6 +3260,24 @@ pub mod test {
                 ],
                 id: AuthID::Key(api_key_tenant.id.into()),
                 ok: true,
+            },
+            // RO admin api key can not create
+            ValidatorTest {
+                validators: vec![ValidateTenantUsersAccess::new(
+                    Flag::Create,
+                    tenant_a.id.into(),
+                )],
+                id: AuthID::Key(api_key_admin_ro.id.into()),
+                ok: false,
+            },
+            // RO tenant api key can not create
+            ValidatorTest {
+                validators: vec![ValidateTenantUsersAccess::new(
+                    Flag::Create,
+                    api_key_tenant_ro.tenant_id.unwrap().into(),
+                )],
+                id: AuthID::Key(api_key_tenant_ro.id.into()),
+                ok: false,
             },
             // tenant api key for different tenant can not create or list
             ValidatorTest {
@@ -3005,6 +3445,40 @@ pub mod test {
                 id: AuthID::Key(api_key_tenant.id.into()),
                 ok: true,
             },
+            // RO admin api key can not update and delete
+            ValidatorTest {
+                validators: vec![
+                    ValidateTenantUserAccess::new(
+                        Flag::Update,
+                        tenant_a.id.into(),
+                        tenant_user.id.into(),
+                    ),
+                    ValidateTenantUserAccess::new(
+                        Flag::Delete,
+                        tenant_a.id.into(),
+                        tenant_user.id.into(),
+                    ),
+                ],
+                id: AuthID::Key(api_key_admin_ro.id.into()),
+                ok: false,
+            },
+            // RO tenant api key can not update and delete
+            ValidatorTest {
+                validators: vec![
+                    ValidateTenantUserAccess::new(
+                        Flag::Update,
+                        api_key_tenant_ro.tenant_id.unwrap().into(),
+                        tenant_user.id.into(),
+                    ),
+                    ValidateTenantUserAccess::new(
+                        Flag::Delete,
+                        api_key_tenant_ro.tenant_id.unwrap().into(),
+                        tenant_user.id.into(),
+                    ),
+                ],
+                id: AuthID::Key(api_key_tenant_ro.id.into()),
+                ok: false,
+            },
             // tenant api key can not read, update or delete for other tenant
             ValidatorTest {
                 validators: vec![
@@ -3081,7 +3555,25 @@ pub mod test {
         let tenant_a = tenant::test::create_tenant().await;
 
         let api_key_admin = api_key::test::create_api_key(true, false).await;
+        let api_key_admin_ro = api_key::create(api_key::ApiKey {
+            name: api_key_admin.name.clone(),
+            is_admin: api_key_admin.is_admin,
+            tenant_id: api_key_admin.tenant_id,
+            is_read_only: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
         let api_key_tenant = api_key::test::create_api_key(false, true).await;
+        let api_key_tenant_ro = api_key::create(api_key::ApiKey {
+            name: api_key_tenant.name.clone(),
+            is_admin: api_key_tenant.is_admin,
+            tenant_id: api_key_tenant.tenant_id,
+            is_read_only: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
 
         let app = application::test::create_application(Some(tenant_a.id.into())).await;
         let app_api_key_tenant =
@@ -3223,6 +3715,24 @@ pub mod test {
                 id: AuthID::Key(api_key_tenant.id.into()),
                 ok: true,
             },
+            // RO admin api key can not create
+            ValidatorTest {
+                validators: vec![ValidateApplicationsAccess::new(
+                    Flag::Create,
+                    tenant_a.id.into(),
+                )],
+                id: AuthID::Key(api_key_admin_ro.id.into()),
+                ok: false,
+            },
+            // RO tenant api key can not create
+            ValidatorTest {
+                validators: vec![ValidateApplicationsAccess::new(
+                    Flag::Create,
+                    api_key_tenant_ro.tenant_id.unwrap().into(),
+                )],
+                id: AuthID::Key(api_key_tenant_ro.id.into()),
+                ok: false,
+            },
             // tenant api key can not create or list for other tenant
             ValidatorTest {
                 validators: vec![
@@ -3317,149 +3827,30 @@ pub mod test {
                 id: AuthID::Key(api_key_tenant.id.into()),
                 ok: true,
             },
-            // tenant api key can not read, update or delete app from other tentant
+            // RO admin api key can not update and delete
+            ValidatorTest {
+                validators: vec![
+                    ValidateApplicationAccess::new(Flag::Update, app.id.into()),
+                    ValidateApplicationAccess::new(Flag::Delete, app.id.into()),
+                ],
+                id: AuthID::Key(api_key_admin_ro.id.into()),
+                ok: false,
+            },
+            // RO tenant api key can not update and delete
+            ValidatorTest {
+                validators: vec![
+                    ValidateApplicationAccess::new(Flag::Update, app_api_key_tenant.id.into()),
+                    ValidateApplicationAccess::new(Flag::Delete, app_api_key_tenant.id.into()),
+                ],
+                id: AuthID::Key(api_key_tenant_ro.id.into()),
+                ok: false,
+            },
+            // tenant api key can not read, update or delete app from other tenant
             ValidatorTest {
                 validators: vec![
                     ValidateApplicationAccess::new(Flag::Read, app.id.into()),
                     ValidateApplicationAccess::new(Flag::Update, app.id.into()),
                     ValidateApplicationAccess::new(Flag::Delete, app.id.into()),
-                ],
-                id: AuthID::Key(api_key_tenant.id.into()),
-                ok: false,
-            },
-        ];
-        run_tests(tests).await;
-    }
-
-    #[tokio::test]
-    async fn device_profile_test() {
-        let _guard = test::prepare().await;
-
-        let user_active = user::User {
-            email: "user@user".into(),
-            is_active: true,
-            ..Default::default()
-        };
-
-        let user_admin = user::User {
-            email: "admin@user".into(),
-            is_active: true,
-            is_admin: true,
-            ..Default::default()
-        };
-
-        for u in [&user_active, &user_admin] {
-            user::create(u.clone()).await.unwrap();
-        }
-
-        let api_key_admin = api_key::test::create_api_key(true, false).await;
-        let api_key_tenant = api_key::test::create_api_key(false, true).await;
-
-        // device-profile templates with user
-        let tests = vec![
-            // admin user can create and list
-            ValidatorTest {
-                validators: vec![
-                    ValidateDeviceProfileTemplatesAccess::new(Flag::Create),
-                    ValidateDeviceProfileTemplatesAccess::new(Flag::List),
-                ],
-                id: AuthID::User(user_admin.id.into()),
-                ok: true,
-            },
-            // user can list
-            ValidatorTest {
-                validators: vec![ValidateDeviceProfileTemplatesAccess::new(Flag::List)],
-                id: AuthID::User(user_active.id.into()),
-                ok: true,
-            },
-            // user can not create
-            ValidatorTest {
-                validators: vec![ValidateDeviceProfileTemplatesAccess::new(Flag::Create)],
-                id: AuthID::User(user_active.id.into()),
-                ok: false,
-            },
-        ];
-        run_tests(tests).await;
-
-        // device-profile templates with api key
-        let tests = vec![
-            // admin api can create and list
-            ValidatorTest {
-                validators: vec![
-                    ValidateDeviceProfileTemplatesAccess::new(Flag::Create),
-                    ValidateDeviceProfileTemplatesAccess::new(Flag::List),
-                ],
-                id: AuthID::Key(api_key_admin.id.into()),
-                ok: true,
-            },
-            // tenant api key can list
-            ValidatorTest {
-                validators: vec![ValidateDeviceProfileTemplatesAccess::new(Flag::List)],
-                id: AuthID::Key(api_key_tenant.id.into()),
-                ok: true,
-            },
-            // tenant api can not create
-            ValidatorTest {
-                validators: vec![ValidateDeviceProfileTemplatesAccess::new(Flag::Create)],
-                id: AuthID::Key(api_key_tenant.id.into()),
-                ok: false,
-            },
-        ];
-        run_tests(tests).await;
-
-        // device-profile template with user
-        let tests = vec![
-            // admin user can read, update and delete
-            ValidatorTest {
-                validators: vec![
-                    ValidateDeviceProfileTemplateAccess::new(Flag::Read),
-                    ValidateDeviceProfileTemplateAccess::new(Flag::Update),
-                    ValidateDeviceProfileTemplateAccess::new(Flag::Delete),
-                ],
-                id: AuthID::User(user_admin.id.into()),
-                ok: true,
-            },
-            // user can read
-            ValidatorTest {
-                validators: vec![ValidateDeviceProfileTemplateAccess::new(Flag::Read)],
-                id: AuthID::User(user_active.id.into()),
-                ok: true,
-            },
-            // user can not update or delete
-            ValidatorTest {
-                validators: vec![
-                    ValidateDeviceProfileTemplateAccess::new(Flag::Update),
-                    ValidateDeviceProfileTemplateAccess::new(Flag::Delete),
-                ],
-                id: AuthID::User(user_active.id.into()),
-                ok: false,
-            },
-        ];
-        run_tests(tests).await;
-
-        // device-profile template with api key
-        let tests = vec![
-            // admin api key can read, update and delete
-            ValidatorTest {
-                validators: vec![
-                    ValidateDeviceProfileTemplateAccess::new(Flag::Read),
-                    ValidateDeviceProfileTemplateAccess::new(Flag::Update),
-                    ValidateDeviceProfileTemplateAccess::new(Flag::Delete),
-                ],
-                id: AuthID::Key(api_key_admin.id.into()),
-                ok: true,
-            },
-            // tenant api key can read
-            ValidatorTest {
-                validators: vec![ValidateDeviceProfileTemplateAccess::new(Flag::Read)],
-                id: AuthID::Key(api_key_tenant.id.into()),
-                ok: true,
-            },
-            // tenant api key can not update or delete
-            ValidatorTest {
-                validators: vec![
-                    ValidateDeviceProfileTemplateAccess::new(Flag::Update),
-                    ValidateDeviceProfileTemplateAccess::new(Flag::Delete),
                 ],
                 id: AuthID::Key(api_key_tenant.id.into()),
                 ok: false,
@@ -3518,18 +3909,45 @@ pub mod test {
         let tenant_a = tenant::test::create_tenant().await;
 
         let api_key_admin = api_key::test::create_api_key(true, false).await;
-        let api_key_tenant = api_key::test::create_api_key(false, true).await;
-
-        let dp = device_profile::create(device_profile::DeviceProfile {
-            name: "test-dp".into(),
-            tenant_id: tenant_a.id,
+        let api_key_admin_ro = api_key::create(api_key::ApiKey {
+            name: api_key_admin.name.clone(),
+            is_admin: api_key_admin.is_admin,
+            tenant_id: api_key_admin.tenant_id,
+            is_read_only: true,
             ..Default::default()
         })
         .await
         .unwrap();
+        let api_key_tenant = api_key::test::create_api_key(false, true).await;
+        let api_key_tenant_ro = api_key::create(api_key::ApiKey {
+            name: api_key_tenant.name.clone(),
+            is_admin: api_key_tenant.is_admin,
+            tenant_id: api_key_tenant.tenant_id,
+            is_read_only: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let dp = device_profile::create(device_profile::DeviceProfile {
+            name: "test-dp".into(),
+            tenant_id: Some(tenant_a.id),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
         let dp_api_key_tenant = device_profile::create(device_profile::DeviceProfile {
             name: "test-dp-tenant".into(),
-            tenant_id: api_key_tenant.tenant_id.unwrap(),
+            tenant_id: Some(api_key_tenant.tenant_id.unwrap()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let dp_global = device_profile::create(device_profile::DeviceProfile {
+            name: "test-dp-tenant".into(),
+            tenant_id: None,
             ..Default::default()
         })
         .await
@@ -3572,8 +3990,12 @@ pub mod test {
             // admin user can create and list
             ValidatorTest {
                 validators: vec![
-                    ValidateDeviceProfilesAccess::new(Flag::Create, tenant_a.id.into()),
-                    ValidateDeviceProfilesAccess::new(Flag::List, tenant_a.id.into()),
+                    ValidateDeviceProfilesAccess::new(
+                        Flag::Create,
+                        Some(tenant_a.id.into()),
+                        false,
+                    ),
+                    ValidateDeviceProfilesAccess::new(Flag::List, Some(tenant_a.id.into()), false),
                 ],
                 id: AuthID::User(user_admin.id.into()),
                 ok: true,
@@ -3581,8 +4003,12 @@ pub mod test {
             // tenant admin user can create and list
             ValidatorTest {
                 validators: vec![
-                    ValidateDeviceProfilesAccess::new(Flag::Create, tenant_a.id.into()),
-                    ValidateDeviceProfilesAccess::new(Flag::List, tenant_a.id.into()),
+                    ValidateDeviceProfilesAccess::new(
+                        Flag::Create,
+                        Some(tenant_a.id.into()),
+                        false,
+                    ),
+                    ValidateDeviceProfilesAccess::new(Flag::List, Some(tenant_a.id.into()), false),
                 ],
                 id: AuthID::User(tenant_admin.id.into()),
                 ok: true,
@@ -3590,8 +4016,12 @@ pub mod test {
             // tenant device admin can create and list
             ValidatorTest {
                 validators: vec![
-                    ValidateDeviceProfilesAccess::new(Flag::Create, tenant_a.id.into()),
-                    ValidateDeviceProfilesAccess::new(Flag::List, tenant_a.id.into()),
+                    ValidateDeviceProfilesAccess::new(
+                        Flag::Create,
+                        Some(tenant_a.id.into()),
+                        false,
+                    ),
+                    ValidateDeviceProfilesAccess::new(Flag::List, Some(tenant_a.id.into()), false),
                 ],
                 id: AuthID::User(tenant_device_admin.id.into()),
                 ok: true,
@@ -3600,7 +4030,8 @@ pub mod test {
             ValidatorTest {
                 validators: vec![ValidateDeviceProfilesAccess::new(
                     Flag::List,
-                    tenant_a.id.into(),
+                    Some(tenant_a.id.into()),
+                    false,
                 )],
                 id: AuthID::User(tenant_gateway_admin.id.into()),
                 ok: true,
@@ -3609,16 +4040,24 @@ pub mod test {
             ValidatorTest {
                 validators: vec![ValidateDeviceProfilesAccess::new(
                     Flag::List,
-                    tenant_a.id.into(),
+                    Some(tenant_a.id.into()),
+                    false,
                 )],
                 id: AuthID::User(tenant_user.id.into()),
+                ok: true,
+            },
+            // active user can list is_global=true
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfilesAccess::new(Flag::List, None, true)],
+                id: AuthID::User(user_active.id.into()),
                 ok: true,
             },
             // tenant users can not create
             ValidatorTest {
                 validators: vec![ValidateDeviceProfilesAccess::new(
                     Flag::Create,
-                    tenant_a.id.into(),
+                    Some(tenant_a.id.into()),
+                    false,
                 )],
                 id: AuthID::User(tenant_user.id.into()),
                 ok: false,
@@ -3627,7 +4066,8 @@ pub mod test {
             ValidatorTest {
                 validators: vec![ValidateDeviceProfilesAccess::new(
                     Flag::Create,
-                    tenant_a.id.into(),
+                    Some(tenant_a.id.into()),
+                    false,
                 )],
                 id: AuthID::User(tenant_gateway_admin.id.into()),
                 ok: false,
@@ -3635,8 +4075,12 @@ pub mod test {
             // non-tenant users can not list or create
             ValidatorTest {
                 validators: vec![
-                    ValidateDeviceProfilesAccess::new(Flag::Create, tenant_a.id.into()),
-                    ValidateDeviceProfilesAccess::new(Flag::List, tenant_a.id.into()),
+                    ValidateDeviceProfilesAccess::new(
+                        Flag::Create,
+                        Some(tenant_a.id.into()),
+                        false,
+                    ),
+                    ValidateDeviceProfilesAccess::new(Flag::List, Some(tenant_a.id.into()), false),
                 ],
                 id: AuthID::User(user_active.id.into()),
                 ok: false,
@@ -3649,8 +4093,12 @@ pub mod test {
             // admin api key can create and list
             ValidatorTest {
                 validators: vec![
-                    ValidateDeviceProfilesAccess::new(Flag::Create, tenant_a.id.into()),
-                    ValidateDeviceProfilesAccess::new(Flag::List, tenant_a.id.into()),
+                    ValidateDeviceProfilesAccess::new(
+                        Flag::Create,
+                        Some(tenant_a.id.into()),
+                        false,
+                    ),
+                    ValidateDeviceProfilesAccess::new(Flag::List, Some(tenant_a.id.into()), false),
                 ],
                 id: AuthID::Key(api_key_admin.id.into()),
                 ok: true,
@@ -3660,21 +4108,53 @@ pub mod test {
                 validators: vec![
                     ValidateDeviceProfilesAccess::new(
                         Flag::Create,
-                        api_key_tenant.tenant_id.unwrap().into(),
+                        api_key_tenant.tenant_id.map(|v| v.into()),
+                        false,
                     ),
                     ValidateDeviceProfilesAccess::new(
                         Flag::List,
-                        api_key_tenant.tenant_id.unwrap().into(),
+                        api_key_tenant.tenant_id.map(|v| v.into()),
+                        false,
                     ),
                 ],
                 id: AuthID::Key(api_key_tenant.id.into()),
                 ok: true,
             },
+            // tenant api key can list is_global=true
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfilesAccess::new(Flag::List, None, true)],
+                id: AuthID::Key(api_key_tenant.id.into()),
+                ok: true,
+            },
+            // RO admin api key can not create
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfilesAccess::new(
+                    Flag::Create,
+                    Some(tenant_a.id.into()),
+                    false,
+                )],
+                id: AuthID::Key(api_key_admin_ro.id.into()),
+                ok: false,
+            },
+            // RO tenant api key can not create
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfilesAccess::new(
+                    Flag::Create,
+                    api_key_tenant_ro.tenant_id.map(|v| v.into()),
+                    false,
+                )],
+                id: AuthID::Key(api_key_tenant_ro.id.into()),
+                ok: false,
+            },
             // tenant api key can not create or list for other tenant
             ValidatorTest {
                 validators: vec![
-                    ValidateDeviceProfilesAccess::new(Flag::Create, tenant_a.id.into()),
-                    ValidateDeviceProfilesAccess::new(Flag::List, tenant_a.id.into()),
+                    ValidateDeviceProfilesAccess::new(
+                        Flag::Create,
+                        Some(tenant_a.id.into()),
+                        false,
+                    ),
+                    ValidateDeviceProfilesAccess::new(Flag::List, Some(tenant_a.id.into()), false),
                 ],
                 id: AuthID::Key(api_key_tenant.id.into()),
                 ok: false,
@@ -3694,7 +4174,7 @@ pub mod test {
                 id: AuthID::User(user_admin.id.into()),
                 ok: true,
             },
-            // tenant admin can read, update and delete
+            // tenant admin can read, update and delete tenant device-profiles
             ValidatorTest {
                 validators: vec![
                     ValidateDeviceProfileAccess::new(Flag::Read, dp.id.into()),
@@ -3704,7 +4184,16 @@ pub mod test {
                 id: AuthID::User(tenant_admin.id.into()),
                 ok: true,
             },
-            // tenant device admin can read, update and delete
+            // tenant admin can read global device-profiles
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfileAccess::new(
+                    Flag::Read,
+                    dp_global.id.into(),
+                )],
+                id: AuthID::User(tenant_admin.id.into()),
+                ok: true,
+            },
+            // tenant device admin can read, update and delete tenant device-profiles
             ValidatorTest {
                 validators: vec![
                     ValidateDeviceProfileAccess::new(Flag::Read, dp.id.into()),
@@ -3714,19 +4203,55 @@ pub mod test {
                 id: AuthID::User(tenant_device_admin.id.into()),
                 ok: true,
             },
-            // tenant gateway admin can read
+            // tenant device admin can read global device-profiles
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfileAccess::new(
+                    Flag::Read,
+                    dp_global.id.into(),
+                )],
+                id: AuthID::User(tenant_gateway_admin.id.into()),
+                ok: true,
+            },
+            // tenant gateway admin can read tenant device-profiles
             ValidatorTest {
                 validators: vec![ValidateDeviceProfileAccess::new(Flag::Read, dp.id.into())],
                 id: AuthID::User(tenant_gateway_admin.id.into()),
                 ok: true,
             },
-            // tenant user can read
+            // tenant gateway admin can read global device-profiles
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfileAccess::new(
+                    Flag::Read,
+                    dp_global.id.into(),
+                )],
+                id: AuthID::User(tenant_gateway_admin.id.into()),
+                ok: true,
+            },
+            // tenant user can read tenant device-profiles
             ValidatorTest {
                 validators: vec![ValidateDeviceProfileAccess::new(Flag::Read, dp.id.into())],
                 id: AuthID::User(tenant_user.id.into()),
                 ok: true,
             },
-            // tenant gateway admin can not update or delete
+            // tenant user can read global device-profiles
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfileAccess::new(
+                    Flag::Read,
+                    dp_global.id.into(),
+                )],
+                id: AuthID::User(tenant_user.id.into()),
+                ok: true,
+            },
+            // tenant admin can not update or delete global device-profiles
+            ValidatorTest {
+                validators: vec![
+                    ValidateDeviceProfileAccess::new(Flag::Update, dp_global.id.into()),
+                    ValidateDeviceProfileAccess::new(Flag::Delete, dp_global.id.into()),
+                ],
+                id: AuthID::User(tenant_admin.id.into()),
+                ok: false,
+            },
+            // tenant gateway admin can not update or delete tenant device-profiles
             ValidatorTest {
                 validators: vec![
                     ValidateDeviceProfileAccess::new(Flag::Update, dp.id.into()),
@@ -3735,11 +4260,29 @@ pub mod test {
                 id: AuthID::User(tenant_gateway_admin.id.into()),
                 ok: false,
             },
-            // tenant user can not update or delete
+            // tenant gateway admin can not update or delete global device-profiles
+            ValidatorTest {
+                validators: vec![
+                    ValidateDeviceProfileAccess::new(Flag::Update, dp_global.id.into()),
+                    ValidateDeviceProfileAccess::new(Flag::Delete, dp_global.id.into()),
+                ],
+                id: AuthID::User(tenant_gateway_admin.id.into()),
+                ok: false,
+            },
+            // tenant user can not update or delete tenant device-profiles
             ValidatorTest {
                 validators: vec![
                     ValidateDeviceProfileAccess::new(Flag::Update, dp.id.into()),
                     ValidateDeviceProfileAccess::new(Flag::Delete, dp.id.into()),
+                ],
+                id: AuthID::User(tenant_user.id.into()),
+                ok: false,
+            },
+            // tenant user can not update or delete global device-profiles
+            ValidatorTest {
+                validators: vec![
+                    ValidateDeviceProfileAccess::new(Flag::Update, dp_global.id.into()),
+                    ValidateDeviceProfileAccess::new(Flag::Delete, dp_global.id.into()),
                 ],
                 id: AuthID::User(tenant_user.id.into()),
                 ok: false,
@@ -3769,6 +4312,24 @@ pub mod test {
                 id: AuthID::Key(api_key_tenant.id.into()),
                 ok: true,
             },
+            // RO admin api key can not update and delete
+            ValidatorTest {
+                validators: vec![
+                    ValidateDeviceProfileAccess::new(Flag::Update, dp.id.into()),
+                    ValidateDeviceProfileAccess::new(Flag::Delete, dp.id.into()),
+                ],
+                id: AuthID::Key(api_key_admin_ro.id.into()),
+                ok: false,
+            },
+            // RO tenant api key can not update and delete
+            ValidatorTest {
+                validators: vec![
+                    ValidateDeviceProfileAccess::new(Flag::Update, dp_api_key_tenant.id.into()),
+                    ValidateDeviceProfileAccess::new(Flag::Delete, dp_api_key_tenant.id.into()),
+                ],
+                id: AuthID::Key(api_key_tenant_ro.id.into()),
+                ok: false,
+            },
             // tenant api key can not read, update or delete for other tenant
             ValidatorTest {
                 validators: vec![
@@ -3776,6 +4337,163 @@ pub mod test {
                     ValidateDeviceProfileAccess::new(Flag::Update, dp.id.into()),
                     ValidateDeviceProfileAccess::new(Flag::Delete, dp.id.into()),
                 ],
+                id: AuthID::Key(api_key_tenant.id.into()),
+                ok: false,
+            },
+        ];
+        run_tests(tests).await;
+
+        // device-profile vendors with user
+        let tests = vec![
+            // active user can list
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfileVendorsAccess::new(Flag::List)],
+                id: AuthID::User(user_active.id.into()),
+                ok: true,
+            },
+        ];
+        run_tests(tests).await;
+
+        // device-profile vendors with api key
+        let tests = vec![
+            // active API key can list
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfileVendorsAccess::new(Flag::List)],
+                id: AuthID::Key(api_key_tenant.id.into()),
+                ok: true,
+            },
+        ];
+        run_tests(tests).await;
+
+        // device-profile vendor with user
+        let tests = vec![
+            // active user can read
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfileVendorAccess::new(Flag::Read)],
+                id: AuthID::User(user_active.id.into()),
+                ok: true,
+            },
+            // admin user can delete
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfileVendorAccess::new(Flag::Delete)],
+                id: AuthID::User(user_admin.id.into()),
+                ok: true,
+            },
+            // non-admin can not delete
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfileVendorAccess::new(Flag::Delete)],
+                id: AuthID::User(user_active.id.into()),
+                ok: false,
+            },
+        ];
+        run_tests(tests).await;
+
+        // device-profile vendor with key.
+        let tests = vec![
+            // admin API key can read and delete
+            ValidatorTest {
+                validators: vec![
+                    ValidateDeviceProfileVendorAccess::new(Flag::Read),
+                    ValidateDeviceProfileVendorAccess::new(Flag::Delete),
+                ],
+                id: AuthID::Key(api_key_admin.id.into()),
+                ok: true,
+            },
+            // tenant API key can read
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfileVendorAccess::new(Flag::Read)],
+                id: AuthID::Key(api_key_tenant.id.into()),
+                ok: true,
+            },
+            // RO admin API key can not delete
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfileVendorAccess::new(Flag::Delete)],
+                id: AuthID::Key(api_key_admin_ro.id.into()),
+                ok: false,
+            },
+            // tenant API key can not delete
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfileVendorAccess::new(Flag::Delete)],
+                id: AuthID::Key(api_key_tenant.id.into()),
+                ok: false,
+            },
+        ];
+        run_tests(tests).await;
+
+        // device-profile devices with user.
+        let tests = vec![
+            // active user can list.
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfileDevicesAccess::new(Flag::List)],
+                id: AuthID::User(user_active.id.into()),
+                ok: true,
+            },
+        ];
+        run_tests(tests).await;
+
+        // device-profile devices with key.
+        let tests = vec![
+            // active API key can list
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfileDevicesAccess::new(Flag::List)],
+                id: AuthID::Key(api_key_tenant.id.into()),
+                ok: true,
+            },
+        ];
+        run_tests(tests).await;
+
+        // device-profile device with user.
+        let tests = vec![
+            // admin user can read and delete
+            ValidatorTest {
+                validators: vec![
+                    ValidateDeviceProfileDeviceAccess::new(Flag::Read),
+                    ValidateDeviceProfileDeviceAccess::new(Flag::Delete),
+                ],
+                id: AuthID::User(user_admin.id.into()),
+                ok: true,
+            },
+            // active user can read
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfileDeviceAccess::new(Flag::Read)],
+                id: AuthID::User(user_active.id.into()),
+                ok: true,
+            },
+            // active user can not delete
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfileDeviceAccess::new(Flag::Delete)],
+                id: AuthID::User(user_active.id.into()),
+                ok: false,
+            },
+        ];
+        run_tests(tests).await;
+
+        // device-profile device with API key
+        let tests = vec![
+            // admin api key can read and delete.
+            ValidatorTest {
+                validators: vec![
+                    ValidateDeviceProfileDeviceAccess::new(Flag::Read),
+                    ValidateDeviceProfileDeviceAccess::new(Flag::Delete),
+                ],
+                id: AuthID::Key(api_key_admin.id.into()),
+                ok: true,
+            },
+            // tenant api key can read.
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfileDeviceAccess::new(Flag::Read)],
+                id: AuthID::Key(api_key_tenant.id.into()),
+                ok: true,
+            },
+            // RO admin api key can not delete.
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfileDeviceAccess::new(Flag::Delete)],
+                id: AuthID::Key(api_key_admin_ro.id.into()),
+                ok: false,
+            },
+            // tenant api key can not delete.
+            ValidatorTest {
+                validators: vec![ValidateDeviceProfileDeviceAccess::new(Flag::Delete)],
                 id: AuthID::Key(api_key_tenant.id.into()),
                 ok: false,
             },
@@ -3831,7 +4549,25 @@ pub mod test {
         }
 
         let api_key_admin = api_key::test::create_api_key(true, false).await;
+        let api_key_admin_ro = api_key::create(api_key::ApiKey {
+            name: api_key_admin.name.clone(),
+            is_admin: api_key_admin.is_admin,
+            tenant_id: api_key_admin.tenant_id,
+            is_read_only: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
         let api_key_tenant = api_key::test::create_api_key(false, true).await;
+        let api_key_tenant_ro = api_key::create(api_key::ApiKey {
+            name: api_key_tenant.name.clone(),
+            is_admin: api_key_tenant.is_admin,
+            tenant_id: api_key_tenant.tenant_id,
+            is_read_only: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
         let api_key_other_tenant = api_key::test::create_api_key(false, true).await;
 
         let app =
@@ -3941,6 +4677,18 @@ pub mod test {
                 id: AuthID::Key(api_key_tenant.id.into()),
                 ok: true,
             },
+            // RO admin api key can not create
+            ValidatorTest {
+                validators: vec![ValidateDevicesAccess::new(Flag::Create, app.id.into())],
+                id: AuthID::Key(api_key_admin_ro.id.into()),
+                ok: false,
+            },
+            // RO tenant api key can not create
+            ValidatorTest {
+                validators: vec![ValidateDevicesAccess::new(Flag::Create, app.id.into())],
+                id: AuthID::Key(api_key_tenant_ro.id.into()),
+                ok: false,
+            },
             // tenant api key can not create or list for other tenant
             ValidatorTest {
                 validators: vec![
@@ -4044,6 +4792,24 @@ pub mod test {
                 id: AuthID::Key(api_key_tenant.id.into()),
                 ok: true,
             },
+            // RO admin api key can not update and delete
+            ValidatorTest {
+                validators: vec![
+                    ValidateDeviceAccess::new(Flag::Update, dev.dev_eui),
+                    ValidateDeviceAccess::new(Flag::Delete, dev.dev_eui),
+                ],
+                id: AuthID::Key(api_key_admin_ro.id.into()),
+                ok: false,
+            },
+            // RO tenant api key can not update and delete
+            ValidatorTest {
+                validators: vec![
+                    ValidateDeviceAccess::new(Flag::Update, dev.dev_eui),
+                    ValidateDeviceAccess::new(Flag::Delete, dev.dev_eui),
+                ],
+                id: AuthID::Key(api_key_tenant_ro.id.into()),
+                ok: false,
+            },
             // other api key can not read, update or delete
             ValidatorTest {
                 validators: vec![
@@ -4084,7 +4850,25 @@ pub mod test {
         }
 
         let api_key_admin = api_key::test::create_api_key(true, false).await;
+        let api_key_admin_ro = api_key::create(api_key::ApiKey {
+            name: api_key_admin.name.clone(),
+            is_admin: api_key_admin.is_admin,
+            tenant_id: api_key_admin.tenant_id,
+            is_read_only: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
         let api_key_tenant = api_key::test::create_api_key(false, true).await;
+        let api_key_tenant_ro = api_key::create(api_key::ApiKey {
+            name: api_key_tenant.name.clone(),
+            is_admin: api_key_tenant.is_admin,
+            tenant_id: api_key_tenant.tenant_id,
+            is_read_only: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
         let api_key_other_tenant = api_key::test::create_api_key(false, true).await;
 
         let app =
@@ -4165,7 +4949,25 @@ pub mod test {
                 id: AuthID::Key(api_key_tenant.id.into()),
                 ok: true,
             },
-            // api key for other tenant cna not create, list or delete
+            // RO admin api key can not create and delete
+            ValidatorTest {
+                validators: vec![
+                    ValidateDeviceQueueAccess::new(Flag::Create, dev.dev_eui),
+                    ValidateDeviceQueueAccess::new(Flag::Delete, dev.dev_eui),
+                ],
+                id: AuthID::Key(api_key_admin_ro.id.into()),
+                ok: false,
+            },
+            // RO tenant api key can not create and delete
+            ValidatorTest {
+                validators: vec![
+                    ValidateDeviceQueueAccess::new(Flag::Create, dev.dev_eui),
+                    ValidateDeviceQueueAccess::new(Flag::Delete, dev.dev_eui),
+                ],
+                id: AuthID::Key(api_key_tenant_ro.id.into()),
+                ok: false,
+            },
+            // api key for other tenant can not create, list or delete
             ValidatorTest {
                 validators: vec![
                     ValidateDeviceQueueAccess::new(Flag::Create, dev.dev_eui),
@@ -4223,7 +5025,25 @@ pub mod test {
         let tenant_a = tenant::test::create_tenant().await;
 
         let api_key_admin = api_key::test::create_api_key(true, false).await;
+        let api_key_admin_ro = api_key::create(api_key::ApiKey {
+            name: api_key_admin.name.clone(),
+            is_admin: api_key_admin.is_admin,
+            tenant_id: api_key_admin.tenant_id,
+            is_read_only: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
         let api_key_tenant = api_key::test::create_api_key(false, true).await;
+        let api_key_tenant_ro = api_key::create(api_key::ApiKey {
+            name: api_key_tenant.name.clone(),
+            is_admin: api_key_tenant.is_admin,
+            tenant_id: api_key_tenant.tenant_id,
+            is_read_only: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
 
         let gw = gateway::create(gateway::Gateway {
             name: "test-gw".into(),
@@ -4348,6 +5168,24 @@ pub mod test {
                 id: AuthID::Key(api_key_tenant.id.into()),
                 ok: true,
             },
+            // RO admin api key can not create
+            ValidatorTest {
+                validators: vec![ValidateGatewaysAccess::new(
+                    Flag::Create,
+                    tenant_a.id.into(),
+                )],
+                id: AuthID::Key(api_key_admin_ro.id.into()),
+                ok: false,
+            },
+            // RO tenant api key can not create
+            ValidatorTest {
+                validators: vec![ValidateGatewaysAccess::new(
+                    Flag::Create,
+                    api_key_tenant_ro.tenant_id.unwrap().into(),
+                )],
+                id: AuthID::Key(api_key_tenant_ro.id.into()),
+                ok: false,
+            },
             // tenant api key can not create or list for other tenant
             ValidatorTest {
                 validators: vec![
@@ -4442,6 +5280,24 @@ pub mod test {
                 id: AuthID::Key(api_key_tenant.id.into()),
                 ok: true,
             },
+            // RO admin api key can not update and delete
+            ValidatorTest {
+                validators: vec![
+                    ValidateGatewayAccess::new(Flag::Update, gw.gateway_id),
+                    ValidateGatewayAccess::new(Flag::Delete, gw.gateway_id),
+                ],
+                id: AuthID::Key(api_key_admin_ro.id.into()),
+                ok: false,
+            },
+            // RO tenant api key can not update and delete
+            ValidatorTest {
+                validators: vec![
+                    ValidateGatewayAccess::new(Flag::Update, gw_api_key_tenant.gateway_id),
+                    ValidateGatewayAccess::new(Flag::Delete, gw_api_key_tenant.gateway_id),
+                ],
+                id: AuthID::Key(api_key_tenant_ro.id.into()),
+                ok: false,
+            },
             // tenant api key can not read, update or delete gw from other tenant
             ValidatorTest {
                 validators: vec![
@@ -4504,7 +5360,25 @@ pub mod test {
         }
 
         let api_key_admin = api_key::test::create_api_key(true, false).await;
+        let api_key_admin_ro = api_key::create(api_key::ApiKey {
+            name: api_key_admin.name.clone(),
+            is_admin: api_key_admin.is_admin,
+            tenant_id: api_key_admin.tenant_id,
+            is_read_only: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
         let api_key_tenant = api_key::test::create_api_key(false, true).await;
+        let api_key_tenant_ro = api_key::create(api_key::ApiKey {
+            name: api_key_tenant.name.clone(),
+            is_admin: api_key_tenant.is_admin,
+            tenant_id: api_key_tenant.tenant_id,
+            is_read_only: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
         let api_key_other_tenant = api_key::test::create_api_key(false, true).await;
 
         let app =
@@ -4548,8 +5422,13 @@ pub mod test {
             // admin user can create and list
             ValidatorTest {
                 validators: vec![
-                    ValidateMulticastGroupsAccess::new(Flag::Create, app.id.into()),
-                    ValidateMulticastGroupsAccess::new(Flag::List, app.id.into()),
+                    ValidateMulticastGroupsAccess::new(Flag::Create, None, Some(app.id.into())),
+                    ValidateMulticastGroupsAccess::new(Flag::List, None, Some(app.id.into())),
+                    ValidateMulticastGroupsAccess::new(
+                        Flag::List,
+                        Some(app.tenant_id.into()),
+                        None,
+                    ),
                 ],
                 id: AuthID::User(user_admin.id.into()),
                 ok: true,
@@ -4557,8 +5436,13 @@ pub mod test {
             // tenant admin can create and list
             ValidatorTest {
                 validators: vec![
-                    ValidateMulticastGroupsAccess::new(Flag::Create, app.id.into()),
-                    ValidateMulticastGroupsAccess::new(Flag::List, app.id.into()),
+                    ValidateMulticastGroupsAccess::new(Flag::Create, None, Some(app.id.into())),
+                    ValidateMulticastGroupsAccess::new(Flag::List, None, Some(app.id.into())),
+                    ValidateMulticastGroupsAccess::new(
+                        Flag::List,
+                        Some(app.tenant_id.into()),
+                        None,
+                    ),
                 ],
                 id: AuthID::User(tenant_admin.id.into()),
                 ok: true,
@@ -4566,18 +5450,27 @@ pub mod test {
             // tenant device admin can create and list
             ValidatorTest {
                 validators: vec![
-                    ValidateMulticastGroupsAccess::new(Flag::Create, app.id.into()),
-                    ValidateMulticastGroupsAccess::new(Flag::List, app.id.into()),
+                    ValidateMulticastGroupsAccess::new(Flag::Create, None, Some(app.id.into())),
+                    ValidateMulticastGroupsAccess::new(Flag::List, None, Some(app.id.into())),
+                    ValidateMulticastGroupsAccess::new(
+                        Flag::List,
+                        Some(app.tenant_id.into()),
+                        None,
+                    ),
                 ],
                 id: AuthID::User(tenant_device_admin.id.into()),
                 ok: true,
             },
             // tenant user can list
             ValidatorTest {
-                validators: vec![ValidateMulticastGroupsAccess::new(
-                    Flag::List,
-                    app.id.into(),
-                )],
+                validators: vec![
+                    ValidateMulticastGroupsAccess::new(Flag::List, None, Some(app.id.into())),
+                    ValidateMulticastGroupsAccess::new(
+                        Flag::List,
+                        Some(app.tenant_id.into()),
+                        None,
+                    ),
+                ],
                 id: AuthID::User(tenant_user.id.into()),
                 ok: true,
             },
@@ -4585,7 +5478,8 @@ pub mod test {
             ValidatorTest {
                 validators: vec![ValidateMulticastGroupsAccess::new(
                     Flag::Create,
-                    app.id.into(),
+                    None,
+                    Some(app.id.into()),
                 )],
                 id: AuthID::User(tenant_user.id.into()),
                 ok: false,
@@ -4593,8 +5487,13 @@ pub mod test {
             // other user can not create or list
             ValidatorTest {
                 validators: vec![
-                    ValidateMulticastGroupsAccess::new(Flag::Create, app.id.into()),
-                    ValidateMulticastGroupsAccess::new(Flag::List, app.id.into()),
+                    ValidateMulticastGroupsAccess::new(Flag::Create, None, Some(app.id.into())),
+                    ValidateMulticastGroupsAccess::new(Flag::List, None, Some(app.id.into())),
+                    ValidateMulticastGroupsAccess::new(
+                        Flag::List,
+                        Some(app.tenant_id.into()),
+                        None,
+                    ),
                 ],
                 id: AuthID::User(user_active.id.into()),
                 ok: false,
@@ -4607,8 +5506,13 @@ pub mod test {
             // admin api key can create and list
             ValidatorTest {
                 validators: vec![
-                    ValidateMulticastGroupsAccess::new(Flag::Create, app.id.into()),
-                    ValidateMulticastGroupsAccess::new(Flag::List, app.id.into()),
+                    ValidateMulticastGroupsAccess::new(Flag::Create, None, Some(app.id.into())),
+                    ValidateMulticastGroupsAccess::new(Flag::List, None, Some(app.id.into())),
+                    ValidateMulticastGroupsAccess::new(
+                        Flag::List,
+                        Some(app.tenant_id.into()),
+                        None,
+                    ),
                 ],
                 id: AuthID::Key(api_key_admin.id.into()),
                 ok: true,
@@ -4616,17 +5520,47 @@ pub mod test {
             // tenant api key can create and list
             ValidatorTest {
                 validators: vec![
-                    ValidateMulticastGroupsAccess::new(Flag::Create, app.id.into()),
-                    ValidateMulticastGroupsAccess::new(Flag::List, app.id.into()),
+                    ValidateMulticastGroupsAccess::new(Flag::Create, None, Some(app.id.into())),
+                    ValidateMulticastGroupsAccess::new(Flag::List, None, Some(app.id.into())),
+                    ValidateMulticastGroupsAccess::new(
+                        Flag::List,
+                        Some(app.tenant_id.into()),
+                        None,
+                    ),
                 ],
                 id: AuthID::Key(api_key_tenant.id.into()),
                 ok: true,
             },
+            // RO admin api key can not create
+            ValidatorTest {
+                validators: vec![ValidateMulticastGroupsAccess::new(
+                    Flag::Create,
+                    None,
+                    Some(app.id.into()),
+                )],
+                id: AuthID::Key(api_key_admin_ro.id.into()),
+                ok: false,
+            },
+            // RO tenant api key can not create
+            ValidatorTest {
+                validators: vec![ValidateMulticastGroupsAccess::new(
+                    Flag::Create,
+                    None,
+                    Some(app.id.into()),
+                )],
+                id: AuthID::Key(api_key_tenant_ro.id.into()),
+                ok: false,
+            },
             // tenant api key can not create or list for other tenant
             ValidatorTest {
                 validators: vec![
-                    ValidateMulticastGroupsAccess::new(Flag::Create, app.id.into()),
-                    ValidateMulticastGroupsAccess::new(Flag::List, app.id.into()),
+                    ValidateMulticastGroupsAccess::new(Flag::Create, None, Some(app.id.into())),
+                    ValidateMulticastGroupsAccess::new(Flag::List, None, Some(app.id.into())),
+                    ValidateMulticastGroupsAccess::new(
+                        Flag::List,
+                        Some(app.tenant_id.into()),
+                        None,
+                    ),
                 ],
                 id: AuthID::Key(api_key_other_tenant.id.into()),
                 ok: false,
@@ -4723,6 +5657,24 @@ pub mod test {
                 ],
                 id: AuthID::Key(api_key_tenant.id.into()),
                 ok: true,
+            },
+            // RO admin api key can not update and delete
+            ValidatorTest {
+                validators: vec![
+                    ValidateMulticastGroupAccess::new(Flag::Update, mg.id.into()),
+                    ValidateMulticastGroupAccess::new(Flag::Delete, mg.id.into()),
+                ],
+                id: AuthID::Key(api_key_admin_ro.id.into()),
+                ok: false,
+            },
+            // RO tenant api key can not update and delete
+            ValidatorTest {
+                validators: vec![
+                    ValidateMulticastGroupAccess::new(Flag::Update, mg.id.into()),
+                    ValidateMulticastGroupAccess::new(Flag::Delete, mg.id.into()),
+                ],
+                id: AuthID::Key(api_key_tenant_ro.id.into()),
+                ok: false,
             },
             // other api key can not read, update or delete
             ValidatorTest {
@@ -4822,6 +5774,24 @@ pub mod test {
                 id: AuthID::Key(api_key_tenant.id.into()),
                 ok: true,
             },
+            // RO admin api key can not create and delete
+            ValidatorTest {
+                validators: vec![
+                    ValidateMulticastGroupQueueAccess::new(Flag::Create, mg.id.into()),
+                    ValidateMulticastGroupQueueAccess::new(Flag::Delete, mg.id.into()),
+                ],
+                id: AuthID::Key(api_key_admin_ro.id.into()),
+                ok: false,
+            },
+            // TO tenant api key can not create and delete
+            ValidatorTest {
+                validators: vec![
+                    ValidateMulticastGroupQueueAccess::new(Flag::Create, mg.id.into()),
+                    ValidateMulticastGroupQueueAccess::new(Flag::Delete, mg.id.into()),
+                ],
+                id: AuthID::Key(api_key_tenant_ro.id.into()),
+                ok: false,
+            },
             // other api key can not create, list or delete
             ValidatorTest {
                 validators: vec![
@@ -4884,7 +5854,25 @@ pub mod test {
         }
 
         let api_key_admin = api_key::test::create_api_key(true, false).await;
+        let api_key_admin_ro = api_key::create(api_key::ApiKey {
+            name: api_key_admin.name.clone(),
+            is_admin: api_key_admin.is_admin,
+            tenant_id: api_key_admin.tenant_id,
+            is_read_only: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
         let api_key_tenant = api_key::test::create_api_key(false, true).await;
+        let api_key_tenant_ro = api_key::create(api_key::ApiKey {
+            name: api_key_tenant.name.clone(),
+            is_admin: api_key_tenant.is_admin,
+            tenant_id: api_key_tenant.tenant_id,
+            is_read_only: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
         let api_key_other_tenant = api_key::test::create_api_key(false, true).await;
 
         let app =
@@ -4928,8 +5916,13 @@ pub mod test {
             // admin user can create and list
             ValidatorTest {
                 validators: vec![
-                    ValidateFuotaDeploymentsAccess::new(Flag::Create, app.id.into()),
-                    ValidateFuotaDeploymentsAccess::new(Flag::List, app.id.into()),
+                    ValidateFuotaDeploymentsAccess::new(Flag::Create, None, Some(app.id.into())),
+                    ValidateFuotaDeploymentsAccess::new(Flag::List, None, Some(app.id.into())),
+                    ValidateFuotaDeploymentsAccess::new(
+                        Flag::List,
+                        Some(app.tenant_id.into()),
+                        None,
+                    ),
                 ],
                 id: AuthID::User(user_admin.id.into()),
                 ok: true,
@@ -4937,8 +5930,13 @@ pub mod test {
             // tenant admin can create and list
             ValidatorTest {
                 validators: vec![
-                    ValidateFuotaDeploymentsAccess::new(Flag::Create, app.id.into()),
-                    ValidateFuotaDeploymentsAccess::new(Flag::List, app.id.into()),
+                    ValidateFuotaDeploymentsAccess::new(Flag::Create, None, Some(app.id.into())),
+                    ValidateFuotaDeploymentsAccess::new(Flag::List, None, Some(app.id.into())),
+                    ValidateFuotaDeploymentsAccess::new(
+                        Flag::List,
+                        Some(app.tenant_id.into()),
+                        None,
+                    ),
                 ],
                 id: AuthID::User(tenant_admin.id.into()),
                 ok: true,
@@ -4946,18 +5944,27 @@ pub mod test {
             // tenant device admin can create and list
             ValidatorTest {
                 validators: vec![
-                    ValidateFuotaDeploymentsAccess::new(Flag::Create, app.id.into()),
-                    ValidateFuotaDeploymentsAccess::new(Flag::List, app.id.into()),
+                    ValidateFuotaDeploymentsAccess::new(Flag::Create, None, Some(app.id.into())),
+                    ValidateFuotaDeploymentsAccess::new(Flag::List, None, Some(app.id.into())),
+                    ValidateFuotaDeploymentsAccess::new(
+                        Flag::List,
+                        Some(app.tenant_id.into()),
+                        None,
+                    ),
                 ],
                 id: AuthID::User(tenant_device_admin.id.into()),
                 ok: true,
             },
             // tenant user can list
             ValidatorTest {
-                validators: vec![ValidateFuotaDeploymentsAccess::new(
-                    Flag::List,
-                    app.id.into(),
-                )],
+                validators: vec![
+                    ValidateFuotaDeploymentsAccess::new(Flag::List, None, Some(app.id.into())),
+                    ValidateFuotaDeploymentsAccess::new(
+                        Flag::List,
+                        Some(app.tenant_id.into()),
+                        None,
+                    ),
+                ],
                 id: AuthID::User(tenant_user.id.into()),
                 ok: true,
             },
@@ -4965,7 +5972,8 @@ pub mod test {
             ValidatorTest {
                 validators: vec![ValidateFuotaDeploymentsAccess::new(
                     Flag::Create,
-                    app.id.into(),
+                    None,
+                    Some(app.id.into()),
                 )],
                 id: AuthID::User(tenant_user.id.into()),
                 ok: false,
@@ -4973,8 +5981,13 @@ pub mod test {
             // other user can not create or list
             ValidatorTest {
                 validators: vec![
-                    ValidateFuotaDeploymentsAccess::new(Flag::Create, app.id.into()),
-                    ValidateFuotaDeploymentsAccess::new(Flag::List, app.id.into()),
+                    ValidateFuotaDeploymentsAccess::new(Flag::Create, None, Some(app.id.into())),
+                    ValidateFuotaDeploymentsAccess::new(Flag::List, None, Some(app.id.into())),
+                    ValidateFuotaDeploymentsAccess::new(
+                        Flag::List,
+                        Some(app.tenant_id.into()),
+                        None,
+                    ),
                 ],
                 id: AuthID::User(user_active.id.into()),
                 ok: false,
@@ -4987,8 +6000,13 @@ pub mod test {
             // admin api key can create and list
             ValidatorTest {
                 validators: vec![
-                    ValidateFuotaDeploymentsAccess::new(Flag::Create, app.id.into()),
-                    ValidateFuotaDeploymentsAccess::new(Flag::List, app.id.into()),
+                    ValidateFuotaDeploymentsAccess::new(Flag::Create, None, Some(app.id.into())),
+                    ValidateFuotaDeploymentsAccess::new(Flag::List, None, Some(app.id.into())),
+                    ValidateFuotaDeploymentsAccess::new(
+                        Flag::List,
+                        Some(app.tenant_id.into()),
+                        None,
+                    ),
                 ],
                 id: AuthID::Key(api_key_admin.id.into()),
                 ok: true,
@@ -4996,17 +6014,47 @@ pub mod test {
             // tenant api key can create and list
             ValidatorTest {
                 validators: vec![
-                    ValidateFuotaDeploymentsAccess::new(Flag::Create, app.id.into()),
-                    ValidateFuotaDeploymentsAccess::new(Flag::List, app.id.into()),
+                    ValidateFuotaDeploymentsAccess::new(Flag::Create, None, Some(app.id.into())),
+                    ValidateFuotaDeploymentsAccess::new(Flag::List, None, Some(app.id.into())),
+                    ValidateFuotaDeploymentsAccess::new(
+                        Flag::List,
+                        Some(app.tenant_id.into()),
+                        None,
+                    ),
                 ],
                 id: AuthID::Key(api_key_tenant.id.into()),
                 ok: true,
             },
+            // RO admin api key can not create
+            ValidatorTest {
+                validators: vec![ValidateFuotaDeploymentsAccess::new(
+                    Flag::Create,
+                    None,
+                    Some(app.id.into()),
+                )],
+                id: AuthID::Key(api_key_admin_ro.id.into()),
+                ok: false,
+            },
+            // RO tenant api key can not create
+            ValidatorTest {
+                validators: vec![ValidateFuotaDeploymentsAccess::new(
+                    Flag::Create,
+                    None,
+                    Some(app.id.into()),
+                )],
+                id: AuthID::Key(api_key_tenant_ro.id.into()),
+                ok: false,
+            },
             // tenant api key can not create or list for other tenant
             ValidatorTest {
                 validators: vec![
-                    ValidateFuotaDeploymentsAccess::new(Flag::Create, app.id.into()),
-                    ValidateFuotaDeploymentsAccess::new(Flag::List, app.id.into()),
+                    ValidateFuotaDeploymentsAccess::new(Flag::Create, None, Some(app.id.into())),
+                    ValidateFuotaDeploymentsAccess::new(Flag::List, None, Some(app.id.into())),
+                    ValidateFuotaDeploymentsAccess::new(
+                        Flag::List,
+                        Some(app.tenant_id.into()),
+                        None,
+                    ),
                 ],
                 id: AuthID::Key(api_key_other_tenant.id.into()),
                 ok: false,
@@ -5015,7 +6063,7 @@ pub mod test {
         run_tests(tests).await;
 
         let dp = device_profile::create(device_profile::DeviceProfile {
-            tenant_id: app.tenant_id,
+            tenant_id: Some(app.tenant_id),
             name: "test-dp".into(),
             ..Default::default()
         })
@@ -5113,8 +6161,26 @@ pub mod test {
                     ValidateFuotaDeploymentAccess::new(Flag::Update, fuota.id.into()),
                     ValidateFuotaDeploymentAccess::new(Flag::Delete, fuota.id.into()),
                 ],
-                id: AuthID::Key(api_key_admin.id.into()),
+                id: AuthID::Key(api_key_tenant.id.into()),
                 ok: true,
+            },
+            // RO admin api key can not update and delete
+            ValidatorTest {
+                validators: vec![
+                    ValidateFuotaDeploymentAccess::new(Flag::Update, fuota.id.into()),
+                    ValidateFuotaDeploymentAccess::new(Flag::Delete, fuota.id.into()),
+                ],
+                id: AuthID::Key(api_key_admin_ro.id.into()),
+                ok: false,
+            },
+            // RO tenant api key can not update and delete
+            ValidatorTest {
+                validators: vec![
+                    ValidateFuotaDeploymentAccess::new(Flag::Update, fuota.id.into()),
+                    ValidateFuotaDeploymentAccess::new(Flag::Delete, fuota.id.into()),
+                ],
+                id: AuthID::Key(api_key_tenant_ro.id.into()),
+                ok: false,
             },
             // other api key can not read, update or delete
             ValidatorTest {

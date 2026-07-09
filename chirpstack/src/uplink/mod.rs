@@ -90,6 +90,7 @@ pub struct UplinkFrameSet {
     pub gateway_private_up_map: HashMap<EUI64, bool>,
     pub gateway_private_down_map: HashMap<EUI64, bool>,
     pub gateway_tenant_id_map: HashMap<EUI64, Uuid>,
+    pub gateway_downlink_priority_map: HashMap<EUI64, u32>,
     pub region_common_name: CommonName,
     pub region_config_id: String,
     pub roaming_meta_data: Option<RoamingMetaData>,
@@ -319,6 +320,7 @@ pub async fn handle_uplink(
         gateway_private_up_map: HashMap::new(),
         gateway_private_down_map: HashMap::new(),
         gateway_tenant_id_map: HashMap::new(),
+        gateway_downlink_priority_map: HashMap::new(),
         roaming_meta_data: None,
     };
 
@@ -372,12 +374,12 @@ async fn update_gateway_metadata(ufs: &mut UplinkFrameSet) -> Result<()> {
         let gw_meta = match gateway::get_meta(&gw_id).await {
             Ok(v) => v,
             Err(e) => {
-                if conf.gateway.allow_unknown_gateways {
-                    if let StorageError::NotFound(_) = e {
-                        ufs.gateway_private_up_map.insert(gw_id, false);
-                        ufs.gateway_private_down_map.insert(gw_id, false);
-                        continue;
-                    }
+                if conf.gateway.allow_unknown_gateways
+                    && let StorageError::NotFound(_) = e
+                {
+                    ufs.gateway_private_up_map.insert(gw_id, false);
+                    ufs.gateway_private_down_map.insert(gw_id, false);
+                    continue;
                 }
 
                 error!(
@@ -407,6 +409,8 @@ async fn update_gateway_metadata(ufs: &mut UplinkFrameSet) -> Result<()> {
             .insert(gw_id, gw_meta.is_private_down);
         ufs.gateway_tenant_id_map
             .insert(gw_id, gw_meta.tenant_id.into());
+        ufs.gateway_downlink_priority_map
+            .insert(gw_id, gw_meta.downlink_priority as u32);
     }
 
     Ok(())

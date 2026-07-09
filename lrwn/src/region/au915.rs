@@ -19,7 +19,8 @@ impl Configuration {
                 supports_user_channels: false,
                 cf_list_min_dr: 0,
                 cf_list_max_dr: 0,
-                data_rates: [
+                data_rates: vec![
+                    // uplink data-rates
                     (
                         0,
                         DataRate {
@@ -116,6 +117,45 @@ impl Configuration {
                         },
                     ),
                     (
+                        9,
+                        DataRate {
+                            uplink: true,
+                            downlink: false,
+
+                            modulation: DataRateModulation::Lora(LoraDataRate {
+                                spreading_factor: 6,
+                                bandwidth: 125000,
+                                coding_rate: "4/5".to_string(),
+                            }),
+                        },
+                    ),
+                    (
+                        10,
+                        DataRate {
+                            uplink: true,
+                            downlink: false,
+
+                            modulation: DataRateModulation::Lora(LoraDataRate {
+                                spreading_factor: 5,
+                                bandwidth: 125000,
+                                coding_rate: "4/5".to_string(),
+                            }),
+                        },
+                    ),
+                    // downlink data-rates
+                    (
+                        0,
+                        DataRate {
+                            uplink: false,
+                            downlink: true,
+                            modulation: DataRateModulation::Lora(LoraDataRate {
+                                spreading_factor: 5,
+                                bandwidth: 500000,
+                                coding_rate: "4/5".to_string(),
+                            }),
+                        },
+                    ),
+                    (
                         8,
                         DataRate {
                             uplink: false,
@@ -187,27 +227,48 @@ impl Configuration {
                             }),
                         },
                     ),
-                ]
-                .iter()
-                .cloned()
-                .collect(),
-                max_payload_size_per_dr: match repeater_compatible {
-                    true => match dwell_time_400ms {
-                        // repeater + dwell time
-                        true => [
-                            (
-                                MacVersion::LORAWAN_1_0_3, // LoRaWAN < 1.0.3 + < LoRaWAN 1.1.0B does not have dwell-time
-                                [(
-                                    Revision::Latest, // A
+                    (
+                        14,
+                        DataRate {
+                            uplink: false,
+                            downlink: true,
+                            modulation: DataRateModulation::Lora(LoraDataRate {
+                                spreading_factor: 6,
+                                bandwidth: 500000,
+                                coding_rate: "4/5".to_string(),
+                            }),
+                        },
+                    ),
+                ],
+                max_dl_payload_size_per_dr: match repeater_compatible {
+                    // repeater compatible
+                    true => [
+                        (
+                            MacVersion::LORAWAN_1_0_1,
+                            [(
+                                Revision::Latest,
+                                [
+                                    (8, MaxPayloadSize { m: 41, n: 33 }),
+                                    (9, MaxPayloadSize { m: 117, n: 109 }),
+                                    (10, MaxPayloadSize { m: 230, n: 222 }),
+                                    (11, MaxPayloadSize { m: 230, n: 222 }),
+                                    (12, MaxPayloadSize { m: 230, n: 222 }),
+                                    (13, MaxPayloadSize { m: 230, n: 222 }),
+                                ]
+                                .iter()
+                                .cloned()
+                                .collect(),
+                            )]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                        ),
+                        (
+                            MacVersion::LORAWAN_1_0_2,
+                            [
+                                (
+                                    Revision::A,
                                     [
-                                        (0, MaxPayloadSize { m: 0, n: 0 }),
-                                        (1, MaxPayloadSize { m: 0, n: 0 }),
-                                        (2, MaxPayloadSize { m: 19, n: 11 }),
-                                        (3, MaxPayloadSize { m: 61, n: 53 }),
-                                        (4, MaxPayloadSize { m: 133, n: 125 }),
-                                        (5, MaxPayloadSize { m: 250, n: 242 }),
-                                        (6, MaxPayloadSize { m: 250, n: 242 }),
-                                        // 7
                                         (8, MaxPayloadSize { m: 41, n: 33 }),
                                         (9, MaxPayloadSize { m: 117, n: 109 }),
                                         (10, MaxPayloadSize { m: 230, n: 222 }),
@@ -218,24 +279,10 @@ impl Configuration {
                                     .iter()
                                     .cloned()
                                     .collect(),
-                                )]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            ),
-                            (
-                                MacVersion::LORAWAN_1_1_0,
-                                [(
+                                ),
+                                (
                                     Revision::Latest, // B
                                     [
-                                        (0, MaxPayloadSize { m: 0, n: 0 }),
-                                        (1, MaxPayloadSize { m: 0, n: 0 }),
-                                        (2, MaxPayloadSize { m: 19, n: 11 }),
-                                        (3, MaxPayloadSize { m: 61, n: 53 }),
-                                        (4, MaxPayloadSize { m: 133, n: 125 }),
-                                        (5, MaxPayloadSize { m: 250, n: 242 }),
-                                        (6, MaxPayloadSize { m: 250, n: 242 }),
-                                        // 7
                                         (8, MaxPayloadSize { m: 41, n: 33 }),
                                         (9, MaxPayloadSize { m: 117, n: 109 }),
                                         (10, MaxPayloadSize { m: 230, n: 222 }),
@@ -246,102 +293,58 @@ impl Configuration {
                                     .iter()
                                     .cloned()
                                     .collect(),
-                                )]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            ),
-                            (
-                                MacVersion::Latest,
+                                ),
+                            ]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                        ),
+                        (
+                            MacVersion::LORAWAN_1_0_3,
+                            [(
+                                Revision::Latest, // A
                                 [
-                                    (
-                                        Revision::RP002_1_0_0,
-                                        [
-                                            (0, MaxPayloadSize { m: 0, n: 0 }),
-                                            (1, MaxPayloadSize { m: 0, n: 0 }),
-                                            (2, MaxPayloadSize { m: 19, n: 11 }),
-                                            (3, MaxPayloadSize { m: 61, n: 53 }),
-                                            (4, MaxPayloadSize { m: 133, n: 125 }),
-                                            (5, MaxPayloadSize { m: 230, n: 222 }),
-                                            (6, MaxPayloadSize { m: 230, n: 222 }),
-                                            // 7
-                                            (8, MaxPayloadSize { m: 41, n: 33 }),
-                                            (9, MaxPayloadSize { m: 117, n: 109 }),
-                                            (10, MaxPayloadSize { m: 230, n: 222 }),
-                                            (11, MaxPayloadSize { m: 230, n: 222 }),
-                                            (12, MaxPayloadSize { m: 230, n: 222 }),
-                                            (13, MaxPayloadSize { m: 230, n: 222 }),
-                                        ]
-                                        .iter()
-                                        .cloned()
-                                        .collect(),
-                                    ),
-                                    (
-                                        Revision::RP002_1_0_1,
-                                        [
-                                            (0, MaxPayloadSize { m: 0, n: 0 }),
-                                            (1, MaxPayloadSize { m: 0, n: 0 }),
-                                            (2, MaxPayloadSize { m: 19, n: 11 }),
-                                            (3, MaxPayloadSize { m: 61, n: 53 }),
-                                            (4, MaxPayloadSize { m: 133, n: 125 }),
-                                            (5, MaxPayloadSize { m: 230, n: 222 }),
-                                            (6, MaxPayloadSize { m: 230, n: 222 }),
-                                            // 7
-                                            (8, MaxPayloadSize { m: 41, n: 33 }),
-                                            (9, MaxPayloadSize { m: 117, n: 109 }),
-                                            (10, MaxPayloadSize { m: 230, n: 222 }),
-                                            (11, MaxPayloadSize { m: 230, n: 222 }),
-                                            (12, MaxPayloadSize { m: 230, n: 222 }),
-                                            (13, MaxPayloadSize { m: 230, n: 222 }),
-                                        ]
-                                        .iter()
-                                        .cloned()
-                                        .collect(),
-                                    ),
-                                    (
-                                        Revision::Latest, // RP002-1.0.2, RP002-1.0.3, RP002-1.0.4
-                                        [
-                                            (0, MaxPayloadSize { m: 0, n: 0 }),
-                                            (1, MaxPayloadSize { m: 0, n: 0 }),
-                                            (2, MaxPayloadSize { m: 19, n: 11 }),
-                                            (3, MaxPayloadSize { m: 61, n: 53 }),
-                                            (4, MaxPayloadSize { m: 133, n: 125 }),
-                                            (5, MaxPayloadSize { m: 230, n: 222 }),
-                                            (6, MaxPayloadSize { m: 230, n: 222 }),
-                                            (7, MaxPayloadSize { m: 58, n: 50 }),
-                                            (8, MaxPayloadSize { m: 61, n: 53 }),
-                                            (9, MaxPayloadSize { m: 137, n: 129 }),
-                                            (10, MaxPayloadSize { m: 230, n: 222 }),
-                                            (11, MaxPayloadSize { m: 230, n: 222 }),
-                                            (12, MaxPayloadSize { m: 230, n: 222 }),
-                                            (13, MaxPayloadSize { m: 230, n: 222 }),
-                                        ]
-                                        .iter()
-                                        .cloned()
-                                        .collect(),
-                                    ),
+                                    (8, MaxPayloadSize { m: 41, n: 33 }),
+                                    (9, MaxPayloadSize { m: 117, n: 109 }),
+                                    (10, MaxPayloadSize { m: 230, n: 222 }),
+                                    (11, MaxPayloadSize { m: 230, n: 222 }),
+                                    (12, MaxPayloadSize { m: 230, n: 222 }),
+                                    (13, MaxPayloadSize { m: 230, n: 222 }),
                                 ]
                                 .iter()
                                 .cloned()
                                 .collect(),
-                            ),
-                        ]
-                        .iter()
-                        .cloned()
-                        .collect(),
-                        // repeater + no dwell time
-                        false => [
-                            (
-                                MacVersion::LORAWAN_1_0_1,
-                                [(
-                                    Revision::Latest,
+                            )]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                        ),
+                        (
+                            MacVersion::LORAWAN_1_1_0,
+                            [(
+                                Revision::Latest, // A & B
+                                [
+                                    (8, MaxPayloadSize { m: 41, n: 33 }),
+                                    (9, MaxPayloadSize { m: 117, n: 109 }),
+                                    (10, MaxPayloadSize { m: 230, n: 222 }),
+                                    (11, MaxPayloadSize { m: 230, n: 222 }),
+                                    (12, MaxPayloadSize { m: 230, n: 222 }),
+                                    (13, MaxPayloadSize { m: 230, n: 222 }),
+                                ]
+                                .iter()
+                                .cloned()
+                                .collect(),
+                            )]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                        ),
+                        (
+                            MacVersion::Latest,
+                            [
+                                (
+                                    Revision::RP002_1_0_0,
                                     [
-                                        (0, MaxPayloadSize { m: 19, n: 11 }),
-                                        (1, MaxPayloadSize { m: 61, n: 53 }),
-                                        (2, MaxPayloadSize { m: 134, n: 126 }),
-                                        (3, MaxPayloadSize { m: 250, n: 242 }),
-                                        (4, MaxPayloadSize { m: 250, n: 242 }),
-                                        // 5 - 7
                                         (8, MaxPayloadSize { m: 41, n: 33 }),
                                         (9, MaxPayloadSize { m: 117, n: 109 }),
                                         (10, MaxPayloadSize { m: 230, n: 222 }),
@@ -352,74 +355,10 @@ impl Configuration {
                                     .iter()
                                     .cloned()
                                     .collect(),
-                                )]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            ),
-                            (
-                                MacVersion::LORAWAN_1_0_2,
-                                [
-                                    (
-                                        Revision::A,
-                                        [
-                                            (0, MaxPayloadSize { m: 19, n: 11 }),
-                                            (1, MaxPayloadSize { m: 61, n: 53 }),
-                                            (2, MaxPayloadSize { m: 134, n: 126 }),
-                                            (3, MaxPayloadSize { m: 250, n: 242 }),
-                                            (4, MaxPayloadSize { m: 250, n: 242 }),
-                                            // 5 - 7
-                                            (8, MaxPayloadSize { m: 41, n: 33 }),
-                                            (9, MaxPayloadSize { m: 117, n: 109 }),
-                                            (10, MaxPayloadSize { m: 230, n: 222 }),
-                                            (11, MaxPayloadSize { m: 230, n: 222 }),
-                                            (12, MaxPayloadSize { m: 230, n: 222 }),
-                                            (13, MaxPayloadSize { m: 230, n: 222 }),
-                                        ]
-                                        .iter()
-                                        .cloned()
-                                        .collect(),
-                                    ),
-                                    (
-                                        Revision::Latest, // B
-                                        [
-                                            (0, MaxPayloadSize { m: 59, n: 51 }),
-                                            (1, MaxPayloadSize { m: 59, n: 51 }),
-                                            (2, MaxPayloadSize { m: 59, n: 51 }),
-                                            (3, MaxPayloadSize { m: 123, n: 115 }),
-                                            (4, MaxPayloadSize { m: 230, n: 222 }),
-                                            (5, MaxPayloadSize { m: 230, n: 222 }),
-                                            (6, MaxPayloadSize { m: 230, n: 222 }),
-                                            // 7
-                                            (8, MaxPayloadSize { m: 41, n: 33 }),
-                                            (9, MaxPayloadSize { m: 117, n: 109 }),
-                                            (10, MaxPayloadSize { m: 230, n: 222 }),
-                                            (11, MaxPayloadSize { m: 230, n: 222 }),
-                                            (12, MaxPayloadSize { m: 230, n: 222 }),
-                                            (13, MaxPayloadSize { m: 230, n: 222 }),
-                                        ]
-                                        .iter()
-                                        .cloned()
-                                        .collect(),
-                                    ),
-                                ]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            ),
-                            (
-                                MacVersion::LORAWAN_1_0_3,
-                                [(
-                                    Revision::Latest, // A
+                                ),
+                                (
+                                    Revision::RP002_1_0_1,
                                     [
-                                        (0, MaxPayloadSize { m: 59, n: 51 }),
-                                        (1, MaxPayloadSize { m: 59, n: 51 }),
-                                        (2, MaxPayloadSize { m: 59, n: 51 }),
-                                        (3, MaxPayloadSize { m: 123, n: 115 }),
-                                        (4, MaxPayloadSize { m: 230, n: 222 }),
-                                        (5, MaxPayloadSize { m: 230, n: 222 }),
-                                        (6, MaxPayloadSize { m: 230, n: 222 }),
-                                        // 7
                                         (8, MaxPayloadSize { m: 41, n: 33 }),
                                         (9, MaxPayloadSize { m: 117, n: 109 }),
                                         (10, MaxPayloadSize { m: 230, n: 222 }),
@@ -430,26 +369,12 @@ impl Configuration {
                                     .iter()
                                     .cloned()
                                     .collect(),
-                                )]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            ),
-                            (
-                                MacVersion::LORAWAN_1_1_0,
-                                [(
-                                    Revision::Latest, // A & B
+                                ),
+                                (
+                                    Revision::RP002_1_0_2,
                                     [
-                                        (0, MaxPayloadSize { m: 59, n: 51 }),
-                                        (1, MaxPayloadSize { m: 59, n: 51 }),
-                                        (2, MaxPayloadSize { m: 59, n: 51 }),
-                                        (3, MaxPayloadSize { m: 123, n: 115 }),
-                                        (4, MaxPayloadSize { m: 230, n: 222 }),
-                                        (5, MaxPayloadSize { m: 230, n: 222 }),
-                                        (6, MaxPayloadSize { m: 230, n: 222 }),
-                                        // 7
-                                        (8, MaxPayloadSize { m: 41, n: 33 }),
-                                        (9, MaxPayloadSize { m: 117, n: 109 }),
+                                        (8, MaxPayloadSize { m: 61, n: 53 }),
+                                        (9, MaxPayloadSize { m: 137, n: 129 }),
                                         (10, MaxPayloadSize { m: 230, n: 222 }),
                                         (11, MaxPayloadSize { m: 230, n: 222 }),
                                         (12, MaxPayloadSize { m: 230, n: 222 }),
@@ -458,240 +383,122 @@ impl Configuration {
                                     .iter()
                                     .cloned()
                                     .collect(),
-                                )]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            ),
-                            (
-                                MacVersion::Latest,
+                                ),
+                                (
+                                    Revision::RP002_1_0_3,
+                                    [
+                                        (8, MaxPayloadSize { m: 61, n: 53 }),
+                                        (9, MaxPayloadSize { m: 137, n: 129 }),
+                                        (10, MaxPayloadSize { m: 230, n: 222 }),
+                                        (11, MaxPayloadSize { m: 230, n: 222 }),
+                                        (12, MaxPayloadSize { m: 230, n: 222 }),
+                                        (13, MaxPayloadSize { m: 230, n: 222 }),
+                                    ]
+                                    .iter()
+                                    .cloned()
+                                    .collect(),
+                                ),
+                                (
+                                    Revision::RP002_1_0_4,
+                                    [
+                                        (8, MaxPayloadSize { m: 61, n: 53 }),
+                                        (9, MaxPayloadSize { m: 137, n: 129 }),
+                                        (10, MaxPayloadSize { m: 230, n: 222 }),
+                                        (11, MaxPayloadSize { m: 230, n: 222 }),
+                                        (12, MaxPayloadSize { m: 230, n: 222 }),
+                                        (13, MaxPayloadSize { m: 230, n: 222 }),
+                                    ]
+                                    .iter()
+                                    .cloned()
+                                    .collect(),
+                                ),
+                                (
+                                    Revision::Latest, // RP002-1.0.5
+                                    [
+                                        (0, MaxPayloadSize { m: 230, n: 222 }),
+                                        (8, MaxPayloadSize { m: 61, n: 53 }),
+                                        (9, MaxPayloadSize { m: 137, n: 129 }),
+                                        (10, MaxPayloadSize { m: 230, n: 222 }),
+                                        (11, MaxPayloadSize { m: 230, n: 222 }),
+                                        (12, MaxPayloadSize { m: 230, n: 222 }),
+                                        (13, MaxPayloadSize { m: 230, n: 222 }),
+                                        (14, MaxPayloadSize { m: 230, n: 222 }),
+                                    ]
+                                    .iter()
+                                    .cloned()
+                                    .collect(),
+                                ),
+                            ]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                        ),
+                    ]
+                    .iter()
+                    .cloned()
+                    .collect(),
+                    // no repeater
+                    false => [
+                        (
+                            MacVersion::LORAWAN_1_0_3, // LoRaWAN < 1.0.3 + < LoRaWAN 1.1.0B does not have dwell-time
+                            [(
+                                Revision::Latest, // A
                                 [
-                                    (
-                                        Revision::RP002_1_0_0,
-                                        [
-                                            (0, MaxPayloadSize { m: 59, n: 51 }),
-                                            (1, MaxPayloadSize { m: 59, n: 51 }),
-                                            (2, MaxPayloadSize { m: 59, n: 51 }),
-                                            (3, MaxPayloadSize { m: 123, n: 115 }),
-                                            (4, MaxPayloadSize { m: 230, n: 222 }),
-                                            (5, MaxPayloadSize { m: 230, n: 222 }),
-                                            (6, MaxPayloadSize { m: 230, n: 222 }),
-                                            // 7
-                                            (8, MaxPayloadSize { m: 41, n: 33 }),
-                                            (9, MaxPayloadSize { m: 117, n: 109 }),
-                                            (10, MaxPayloadSize { m: 230, n: 222 }),
-                                            (11, MaxPayloadSize { m: 230, n: 222 }),
-                                            (12, MaxPayloadSize { m: 230, n: 222 }),
-                                            (13, MaxPayloadSize { m: 230, n: 222 }),
-                                        ]
-                                        .iter()
-                                        .cloned()
-                                        .collect(),
-                                    ),
-                                    (
-                                        Revision::RP002_1_0_1,
-                                        [
-                                            (0, MaxPayloadSize { m: 59, n: 51 }),
-                                            (1, MaxPayloadSize { m: 59, n: 51 }),
-                                            (2, MaxPayloadSize { m: 59, n: 51 }),
-                                            (3, MaxPayloadSize { m: 123, n: 115 }),
-                                            (4, MaxPayloadSize { m: 230, n: 222 }),
-                                            (5, MaxPayloadSize { m: 230, n: 222 }),
-                                            (6, MaxPayloadSize { m: 230, n: 222 }),
-                                            // 7
-                                            (8, MaxPayloadSize { m: 41, n: 33 }),
-                                            (9, MaxPayloadSize { m: 117, n: 109 }),
-                                            (10, MaxPayloadSize { m: 230, n: 222 }),
-                                            (11, MaxPayloadSize { m: 230, n: 222 }),
-                                            (12, MaxPayloadSize { m: 230, n: 222 }),
-                                            (13, MaxPayloadSize { m: 230, n: 222 }),
-                                        ]
-                                        .iter()
-                                        .cloned()
-                                        .collect(),
-                                    ),
-                                    (
-                                        Revision::Latest, // RP002-1.0.2, RP002-1.0.3, RP002-1.0.4
-                                        [
-                                            (0, MaxPayloadSize { m: 59, n: 51 }),
-                                            (1, MaxPayloadSize { m: 59, n: 51 }),
-                                            (2, MaxPayloadSize { m: 59, n: 51 }),
-                                            (3, MaxPayloadSize { m: 123, n: 115 }),
-                                            (4, MaxPayloadSize { m: 230, n: 222 }),
-                                            (5, MaxPayloadSize { m: 230, n: 222 }),
-                                            (6, MaxPayloadSize { m: 230, n: 222 }),
-                                            (7, MaxPayloadSize { m: 58, n: 50 }),
-                                            (8, MaxPayloadSize { m: 61, n: 53 }),
-                                            (9, MaxPayloadSize { m: 137, n: 129 }),
-                                            (10, MaxPayloadSize { m: 230, n: 222 }),
-                                            (11, MaxPayloadSize { m: 230, n: 222 }),
-                                            (12, MaxPayloadSize { m: 230, n: 222 }),
-                                            (13, MaxPayloadSize { m: 230, n: 222 }),
-                                        ]
-                                        .iter()
-                                        .cloned()
-                                        .collect(),
-                                    ),
+                                    (8, MaxPayloadSize { m: 61, n: 53 }),
+                                    (9, MaxPayloadSize { m: 137, n: 129 }),
+                                    (10, MaxPayloadSize { m: 250, n: 242 }),
+                                    (11, MaxPayloadSize { m: 250, n: 242 }),
+                                    (12, MaxPayloadSize { m: 250, n: 242 }),
+                                    (13, MaxPayloadSize { m: 250, n: 242 }),
                                 ]
                                 .iter()
                                 .cloned()
                                 .collect(),
-                            ),
-                        ]
-                        .iter()
-                        .cloned()
-                        .collect(),
-                    },
-                    false => match dwell_time_400ms {
-                        // no repeater + dwell time
-                        true => [
-                            (
-                                MacVersion::LORAWAN_1_0_3, // LoRaWAN < 1.0.3 + < LoRaWAN 1.1.0B does not have dwell-time
-                                [(
-                                    Revision::Latest, // A
-                                    [
-                                        (0, MaxPayloadSize { m: 0, n: 0 }),
-                                        (1, MaxPayloadSize { m: 0, n: 0 }),
-                                        (2, MaxPayloadSize { m: 19, n: 11 }),
-                                        (3, MaxPayloadSize { m: 61, n: 53 }),
-                                        (4, MaxPayloadSize { m: 133, n: 125 }),
-                                        (5, MaxPayloadSize { m: 250, n: 242 }),
-                                        (6, MaxPayloadSize { m: 250, n: 242 }),
-                                        // 7
-                                        (8, MaxPayloadSize { m: 61, n: 53 }),
-                                        (9, MaxPayloadSize { m: 137, n: 129 }),
-                                        (10, MaxPayloadSize { m: 250, n: 242 }),
-                                        (11, MaxPayloadSize { m: 250, n: 242 }),
-                                        (12, MaxPayloadSize { m: 250, n: 242 }),
-                                        (13, MaxPayloadSize { m: 250, n: 242 }),
-                                    ]
-                                    .iter()
-                                    .cloned()
-                                    .collect(),
-                                )]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            ),
-                            (
-                                MacVersion::LORAWAN_1_1_0,
-                                [(
-                                    Revision::Latest, // B
-                                    [
-                                        (0, MaxPayloadSize { m: 0, n: 0 }),
-                                        (1, MaxPayloadSize { m: 0, n: 0 }),
-                                        (2, MaxPayloadSize { m: 19, n: 11 }),
-                                        (3, MaxPayloadSize { m: 61, n: 53 }),
-                                        (4, MaxPayloadSize { m: 133, n: 125 }),
-                                        (5, MaxPayloadSize { m: 250, n: 242 }),
-                                        (6, MaxPayloadSize { m: 250, n: 242 }),
-                                        // 7
-                                        (8, MaxPayloadSize { m: 61, n: 53 }),
-                                        (9, MaxPayloadSize { m: 137, n: 129 }),
-                                        (10, MaxPayloadSize { m: 250, n: 242 }),
-                                        (11, MaxPayloadSize { m: 250, n: 242 }),
-                                        (12, MaxPayloadSize { m: 250, n: 242 }),
-                                        (13, MaxPayloadSize { m: 250, n: 242 }),
-                                    ]
-                                    .iter()
-                                    .cloned()
-                                    .collect(),
-                                )]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            ),
-                            (
-                                MacVersion::Latest,
+                            )]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                        ),
+                        (
+                            MacVersion::LORAWAN_1_1_0,
+                            [(
+                                Revision::Latest, // B
                                 [
-                                    (
-                                        Revision::RP002_1_0_0,
-                                        [
-                                            (0, MaxPayloadSize { m: 0, n: 0 }),
-                                            (1, MaxPayloadSize { m: 0, n: 0 }),
-                                            (2, MaxPayloadSize { m: 19, n: 11 }),
-                                            (3, MaxPayloadSize { m: 61, n: 53 }),
-                                            (4, MaxPayloadSize { m: 133, n: 125 }),
-                                            (5, MaxPayloadSize { m: 250, n: 242 }),
-                                            (6, MaxPayloadSize { m: 250, n: 242 }),
-                                            // 7
-                                            (8, MaxPayloadSize { m: 61, n: 53 }),
-                                            (9, MaxPayloadSize { m: 137, n: 129 }),
-                                            (10, MaxPayloadSize { m: 250, n: 222 }),
-                                            (11, MaxPayloadSize { m: 250, n: 250 }),
-                                            (12, MaxPayloadSize { m: 250, n: 250 }),
-                                            (13, MaxPayloadSize { m: 250, n: 250 }),
-                                        ]
-                                        .iter()
-                                        .cloned()
-                                        .collect(),
-                                    ),
-                                    (
-                                        Revision::RP002_1_0_1,
-                                        [
-                                            (0, MaxPayloadSize { m: 0, n: 0 }),
-                                            (1, MaxPayloadSize { m: 0, n: 0 }),
-                                            (2, MaxPayloadSize { m: 19, n: 11 }),
-                                            (3, MaxPayloadSize { m: 61, n: 53 }),
-                                            (4, MaxPayloadSize { m: 133, n: 125 }),
-                                            (5, MaxPayloadSize { m: 250, n: 242 }),
-                                            (6, MaxPayloadSize { m: 250, n: 242 }),
-                                            // 7
-                                            (8, MaxPayloadSize { m: 61, n: 53 }),
-                                            (9, MaxPayloadSize { m: 137, n: 129 }),
-                                            (10, MaxPayloadSize { m: 250, n: 242 }),
-                                            (11, MaxPayloadSize { m: 250, n: 242 }),
-                                            (12, MaxPayloadSize { m: 250, n: 242 }),
-                                            (13, MaxPayloadSize { m: 250, n: 242 }),
-                                        ]
-                                        .iter()
-                                        .cloned()
-                                        .collect(),
-                                    ),
-                                    (
-                                        Revision::Latest, // RP002-1.0.2, RP002-1.0.3, RP002-1.0.4
-                                        [
-                                            (0, MaxPayloadSize { m: 0, n: 0 }),
-                                            (1, MaxPayloadSize { m: 0, n: 0 }),
-                                            (2, MaxPayloadSize { m: 19, n: 11 }),
-                                            (3, MaxPayloadSize { m: 61, n: 53 }),
-                                            (4, MaxPayloadSize { m: 133, n: 125 }),
-                                            (5, MaxPayloadSize { m: 250, n: 242 }),
-                                            (6, MaxPayloadSize { m: 250, n: 242 }),
-                                            (7, MaxPayloadSize { m: 58, n: 50 }),
-                                            (8, MaxPayloadSize { m: 61, n: 53 }),
-                                            (9, MaxPayloadSize { m: 137, n: 129 }),
-                                            (10, MaxPayloadSize { m: 250, n: 242 }),
-                                            (11, MaxPayloadSize { m: 250, n: 242 }),
-                                            (12, MaxPayloadSize { m: 250, n: 242 }),
-                                            (13, MaxPayloadSize { m: 250, n: 242 }),
-                                        ]
-                                        .iter()
-                                        .cloned()
-                                        .collect(),
-                                    ),
+                                    (8, MaxPayloadSize { m: 61, n: 53 }),
+                                    (9, MaxPayloadSize { m: 137, n: 129 }),
+                                    (10, MaxPayloadSize { m: 250, n: 242 }),
+                                    (11, MaxPayloadSize { m: 250, n: 242 }),
+                                    (12, MaxPayloadSize { m: 250, n: 242 }),
+                                    (13, MaxPayloadSize { m: 250, n: 242 }),
                                 ]
                                 .iter()
                                 .cloned()
                                 .collect(),
-                            ),
-                        ]
-                        .iter()
-                        .cloned()
-                        .collect(),
-                        // no repeater + no dwell time
-                        false => [
-                            (
-                                MacVersion::LORAWAN_1_0_1,
-                                [(
-                                    Revision::Latest,
+                            )]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                        ),
+                        (
+                            MacVersion::Latest,
+                            [
+                                (
+                                    Revision::RP002_1_0_0,
                                     [
-                                        (0, MaxPayloadSize { m: 19, n: 11 }),
-                                        (1, MaxPayloadSize { m: 61, n: 53 }),
-                                        (2, MaxPayloadSize { m: 134, n: 126 }),
-                                        (3, MaxPayloadSize { m: 250, n: 242 }),
-                                        (4, MaxPayloadSize { m: 250, n: 242 }),
-                                        // 5 - 7
+                                        (8, MaxPayloadSize { m: 61, n: 53 }),
+                                        (9, MaxPayloadSize { m: 137, n: 129 }),
+                                        (10, MaxPayloadSize { m: 250, n: 222 }),
+                                        (11, MaxPayloadSize { m: 250, n: 250 }),
+                                        (12, MaxPayloadSize { m: 250, n: 250 }),
+                                        (13, MaxPayloadSize { m: 250, n: 250 }),
+                                    ]
+                                    .iter()
+                                    .cloned()
+                                    .collect(),
+                                ),
+                                (
+                                    Revision::RP002_1_0_1,
+                                    [
                                         (8, MaxPayloadSize { m: 61, n: 53 }),
                                         (9, MaxPayloadSize { m: 137, n: 129 }),
                                         (10, MaxPayloadSize { m: 250, n: 242 }),
@@ -702,74 +509,10 @@ impl Configuration {
                                     .iter()
                                     .cloned()
                                     .collect(),
-                                )]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            ),
-                            (
-                                MacVersion::LORAWAN_1_0_2,
-                                [
-                                    (
-                                        Revision::A,
-                                        [
-                                            (0, MaxPayloadSize { m: 19, n: 11 }),
-                                            (1, MaxPayloadSize { m: 61, n: 53 }),
-                                            (2, MaxPayloadSize { m: 134, n: 126 }),
-                                            (3, MaxPayloadSize { m: 250, n: 242 }),
-                                            (4, MaxPayloadSize { m: 250, n: 242 }),
-                                            // 5 - 7
-                                            (8, MaxPayloadSize { m: 61, n: 53 }),
-                                            (9, MaxPayloadSize { m: 137, n: 129 }),
-                                            (10, MaxPayloadSize { m: 250, n: 242 }),
-                                            (11, MaxPayloadSize { m: 250, n: 242 }),
-                                            (12, MaxPayloadSize { m: 250, n: 242 }),
-                                            (13, MaxPayloadSize { m: 250, n: 242 }),
-                                        ]
-                                        .iter()
-                                        .cloned()
-                                        .collect(),
-                                    ),
-                                    (
-                                        Revision::Latest, // B
-                                        [
-                                            (0, MaxPayloadSize { m: 59, n: 51 }),
-                                            (1, MaxPayloadSize { m: 59, n: 51 }),
-                                            (2, MaxPayloadSize { m: 59, n: 51 }),
-                                            (3, MaxPayloadSize { m: 123, n: 115 }),
-                                            (4, MaxPayloadSize { m: 250, n: 242 }),
-                                            (5, MaxPayloadSize { m: 250, n: 242 }),
-                                            (6, MaxPayloadSize { m: 250, n: 242 }),
-                                            // 7
-                                            (8, MaxPayloadSize { m: 61, n: 53 }),
-                                            (9, MaxPayloadSize { m: 137, n: 129 }),
-                                            (10, MaxPayloadSize { m: 250, n: 242 }),
-                                            (11, MaxPayloadSize { m: 250, n: 242 }),
-                                            (12, MaxPayloadSize { m: 250, n: 242 }),
-                                            (13, MaxPayloadSize { m: 250, n: 242 }),
-                                        ]
-                                        .iter()
-                                        .cloned()
-                                        .collect(),
-                                    ),
-                                ]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            ),
-                            (
-                                MacVersion::LORAWAN_1_0_3,
-                                [(
-                                    Revision::Latest, // A
+                                ),
+                                (
+                                    Revision::RP002_1_0_2,
                                     [
-                                        (0, MaxPayloadSize { m: 59, n: 51 }),
-                                        (1, MaxPayloadSize { m: 59, n: 51 }),
-                                        (2, MaxPayloadSize { m: 59, n: 51 }),
-                                        (3, MaxPayloadSize { m: 123, n: 115 }),
-                                        (4, MaxPayloadSize { m: 250, n: 242 }),
-                                        (5, MaxPayloadSize { m: 250, n: 242 }),
-                                        (6, MaxPayloadSize { m: 250, n: 242 }),
-                                        // 7
                                         (8, MaxPayloadSize { m: 61, n: 53 }),
                                         (9, MaxPayloadSize { m: 137, n: 129 }),
                                         (10, MaxPayloadSize { m: 250, n: 242 }),
@@ -780,24 +523,10 @@ impl Configuration {
                                     .iter()
                                     .cloned()
                                     .collect(),
-                                )]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            ),
-                            (
-                                MacVersion::LORAWAN_1_1_0,
-                                [(
-                                    Revision::Latest, // A & B
+                                ),
+                                (
+                                    Revision::RP002_1_0_3,
                                     [
-                                        (0, MaxPayloadSize { m: 59, n: 51 }),
-                                        (1, MaxPayloadSize { m: 59, n: 51 }),
-                                        (2, MaxPayloadSize { m: 59, n: 51 }),
-                                        (3, MaxPayloadSize { m: 123, n: 115 }),
-                                        (4, MaxPayloadSize { m: 250, n: 242 }),
-                                        (5, MaxPayloadSize { m: 250, n: 242 }),
-                                        (6, MaxPayloadSize { m: 250, n: 242 }),
-                                        // 7
                                         (8, MaxPayloadSize { m: 61, n: 53 }),
                                         (9, MaxPayloadSize { m: 137, n: 129 }),
                                         (10, MaxPayloadSize { m: 250, n: 242 }),
@@ -808,90 +537,46 @@ impl Configuration {
                                     .iter()
                                     .cloned()
                                     .collect(),
-                                )]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            ),
-                            (
-                                MacVersion::Latest,
-                                [
-                                    (
-                                        Revision::RP002_1_0_0,
-                                        [
-                                            (0, MaxPayloadSize { m: 59, n: 51 }),
-                                            (1, MaxPayloadSize { m: 59, n: 51 }),
-                                            (2, MaxPayloadSize { m: 59, n: 51 }),
-                                            (3, MaxPayloadSize { m: 123, n: 115 }),
-                                            (4, MaxPayloadSize { m: 250, n: 242 }),
-                                            (5, MaxPayloadSize { m: 250, n: 242 }),
-                                            (6, MaxPayloadSize { m: 250, n: 242 }),
-                                            // 7
-                                            (8, MaxPayloadSize { m: 61, n: 53 }),
-                                            (9, MaxPayloadSize { m: 137, n: 129 }),
-                                            (10, MaxPayloadSize { m: 250, n: 242 }),
-                                            (11, MaxPayloadSize { m: 250, n: 242 }),
-                                            (12, MaxPayloadSize { m: 250, n: 242 }),
-                                            (13, MaxPayloadSize { m: 250, n: 242 }),
-                                        ]
-                                        .iter()
-                                        .cloned()
-                                        .collect(),
-                                    ),
-                                    (
-                                        Revision::RP002_1_0_1,
-                                        [
-                                            (0, MaxPayloadSize { m: 59, n: 51 }),
-                                            (1, MaxPayloadSize { m: 59, n: 51 }),
-                                            (2, MaxPayloadSize { m: 59, n: 51 }),
-                                            (3, MaxPayloadSize { m: 123, n: 115 }),
-                                            (4, MaxPayloadSize { m: 250, n: 242 }),
-                                            (5, MaxPayloadSize { m: 250, n: 242 }),
-                                            (6, MaxPayloadSize { m: 250, n: 242 }),
-                                            // 7
-                                            (8, MaxPayloadSize { m: 61, n: 53 }),
-                                            (9, MaxPayloadSize { m: 137, n: 129 }),
-                                            (10, MaxPayloadSize { m: 250, n: 242 }),
-                                            (11, MaxPayloadSize { m: 250, n: 242 }),
-                                            (12, MaxPayloadSize { m: 250, n: 242 }),
-                                            (13, MaxPayloadSize { m: 250, n: 242 }),
-                                        ]
-                                        .iter()
-                                        .cloned()
-                                        .collect(),
-                                    ),
-                                    (
-                                        Revision::Latest, // RP002-1.0.2, RP002-1.0.3, RP002-1.0.4
-                                        [
-                                            (0, MaxPayloadSize { m: 59, n: 51 }),
-                                            (1, MaxPayloadSize { m: 59, n: 51 }),
-                                            (2, MaxPayloadSize { m: 59, n: 51 }),
-                                            (3, MaxPayloadSize { m: 123, n: 115 }),
-                                            (4, MaxPayloadSize { m: 250, n: 242 }),
-                                            (5, MaxPayloadSize { m: 250, n: 242 }),
-                                            (6, MaxPayloadSize { m: 250, n: 242 }),
-                                            (7, MaxPayloadSize { m: 58, n: 50 }),
-                                            (8, MaxPayloadSize { m: 61, n: 53 }),
-                                            (9, MaxPayloadSize { m: 137, n: 129 }),
-                                            (10, MaxPayloadSize { m: 250, n: 222 }),
-                                            (11, MaxPayloadSize { m: 250, n: 242 }),
-                                            (12, MaxPayloadSize { m: 250, n: 242 }),
-                                            (13, MaxPayloadSize { m: 250, n: 242 }),
-                                        ]
-                                        .iter()
-                                        .cloned()
-                                        .collect(),
-                                    ),
-                                ]
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            ),
-                        ]
-                        .iter()
-                        .cloned()
-                        .collect(),
-                    },
+                                ),
+                                (
+                                    Revision::RP002_1_0_4,
+                                    [
+                                        (8, MaxPayloadSize { m: 61, n: 53 }),
+                                        (9, MaxPayloadSize { m: 137, n: 129 }),
+                                        (10, MaxPayloadSize { m: 250, n: 242 }),
+                                        (11, MaxPayloadSize { m: 250, n: 242 }),
+                                        (12, MaxPayloadSize { m: 250, n: 242 }),
+                                        (13, MaxPayloadSize { m: 250, n: 242 }),
+                                    ]
+                                    .iter()
+                                    .cloned()
+                                    .collect(),
+                                ),
+                                (
+                                    Revision::Latest, // RP002-1.0.5
+                                    [
+                                        (0, MaxPayloadSize { m: 250, n: 242 }),
+                                        (8, MaxPayloadSize { m: 61, n: 53 }),
+                                        (9, MaxPayloadSize { m: 137, n: 129 }),
+                                        (10, MaxPayloadSize { m: 250, n: 242 }),
+                                        (11, MaxPayloadSize { m: 250, n: 242 }),
+                                        (12, MaxPayloadSize { m: 250, n: 242 }),
+                                        (13, MaxPayloadSize { m: 250, n: 242 }),
+                                        (14, MaxPayloadSize { m: 250, n: 242 }),
+                                    ]
+                                    .iter()
+                                    .cloned()
+                                    .collect(),
+                                ),
+                            ]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                        ),
+                    ]
+                    .iter()
+                    .cloned()
+                    .collect(),
                 },
                 rx1_data_rate_table: [
                     (0, vec![8, 8, 8, 8, 8, 8]),
@@ -902,6 +587,8 @@ impl Configuration {
                     (5, vec![13, 12, 11, 10, 9, 8]),
                     (6, vec![13, 13, 12, 11, 10, 9]),
                     (7, vec![9, 8, 8, 8, 8, 8]),
+                    (9, vec![14, 13, 12, 11, 10, 9]),
+                    (10, vec![0, 14, 13, 12, 11, 10]),
                 ]
                 .iter()
                 .cloned()
@@ -932,8 +619,7 @@ impl Configuration {
         for i in 0..64 {
             c.base.uplink_channels.push(Channel {
                 frequency: 915200000 + (i * 200000),
-                min_dr: 0,
-                max_dr: 5,
+                data_rates: vec![0, 1, 2, 3, 4, 5],
                 enabled: true,
                 user_defined: false,
             });
@@ -943,8 +629,7 @@ impl Configuration {
         for i in 0..8 {
             c.base.uplink_channels.push(Channel {
                 frequency: 915900000 + (i * 1600000),
-                min_dr: 6,
-                max_dr: 7,
+                data_rates: vec![6, 7],
                 enabled: true,
                 user_defined: false,
             });
@@ -954,8 +639,7 @@ impl Configuration {
         for i in 0..8 {
             c.base.downlink_channels.push(Channel {
                 frequency: 923300000 + (i * 600000),
-                min_dr: 8,
-                max_dr: 13,
+                data_rates: vec![8, 9, 10, 11, 12, 13],
                 enabled: true,
                 user_defined: false,
             });
@@ -1004,6 +688,8 @@ impl Region for Configuration {
             rx2_delay: Duration::from_secs(2),
             join_accept_delay1: Duration::from_secs(5),
             join_accept_delay2: Duration::from_secs(6),
+            min_ul_dr: 0,
+            max_ul_dr: 6,
         }
     }
 
@@ -1015,18 +701,31 @@ impl Region for Configuration {
         self.base.get_data_rate_index(uplink, modulation)
     }
 
-    fn get_data_rate(&self, dr: u8) -> Result<DataRateModulation> {
-        self.base.get_data_rate(dr)
+    fn get_data_rate(&self, uplink: bool, dr_index: u8) -> Result<DataRateModulation> {
+        self.base.get_data_rate(uplink, dr_index)
     }
 
-    fn get_max_payload_size(
+    fn get_new_channel_req_dr_range(&self, data_rates: &[u8]) -> Result<(u8, u8)> {
+        self.base.get_new_channel_req_dr_range(data_rates)
+    }
+
+    fn get_data_rates_for_new_channel_req_dr_range(
+        &self,
+        min_dr: u8,
+        max_dr: u8,
+    ) -> Result<Vec<u8>> {
+        self.base
+            .get_data_rates_for_new_channel_req_dr_range(min_dr, max_dr)
+    }
+
+    fn get_max_dl_payload_size(
         &self,
         mac_version: MacVersion,
         reg_params_revision: Revision,
         dr: u8,
     ) -> Result<MaxPayloadSize> {
         self.base
-            .get_max_payload_size(mac_version, reg_params_revision, dr)
+            .get_max_dl_payload_size(mac_version, reg_params_revision, dr)
     }
 
     fn get_rx1_data_rate_index(&self, uplink_dr: u8, rx1_dr_offset: usize) -> Result<u8> {
@@ -1037,8 +736,8 @@ impl Region for Configuration {
         self.base.get_tx_power_offset(tx_power)
     }
 
-    fn add_channel(&mut self, frequency: u32, min_dr: u8, max_dr: u8) -> Result<()> {
-        self.base.add_channel(frequency, min_dr, max_dr)
+    fn add_channel(&mut self, frequency: u32, data_rates: Vec<u8>) -> Result<()> {
+        self.base.add_channel(frequency, data_rates)
     }
 
     fn get_uplink_channel(&self, channel: usize) -> Result<Channel> {
@@ -1250,42 +949,36 @@ pub mod test {
         struct Test {
             channel: usize,
             freq: u32,
-            min_dr: u8,
-            max_dr: u8,
+            data_rates: Vec<u8>,
         }
 
         let tests = vec![
             Test {
                 channel: 0,
                 freq: 915200000,
-                min_dr: 0,
-                max_dr: 5,
+                data_rates: (0..=5).collect(),
             },
             Test {
                 channel: 63,
                 freq: 927800000,
-                min_dr: 0,
-                max_dr: 5,
+                data_rates: (0..=5).collect(),
             },
             Test {
                 channel: 64,
                 freq: 915900000,
-                min_dr: 6,
-                max_dr: 7,
+                data_rates: vec![6, 7],
             },
             Test {
                 channel: 71,
                 freq: 927100000,
-                min_dr: 6,
-                max_dr: 7,
+                data_rates: vec![6, 7],
             },
         ];
 
         for tst in &tests {
             let chan = c.get_uplink_channel(tst.channel).unwrap();
             assert_eq!(tst.freq, chan.frequency);
-            assert_eq!(tst.min_dr, chan.min_dr);
-            assert_eq!(tst.max_dr, chan.max_dr);
+            assert_eq!(tst.data_rates, chan.data_rates);
         }
     }
 

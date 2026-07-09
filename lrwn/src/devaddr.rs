@@ -2,10 +2,12 @@ use std::fmt;
 use std::str::FromStr;
 
 use anyhow::Result;
+#[cfg(feature = "postgres")]
+use diesel::pg::Pg;
 #[cfg(feature = "sqlite")]
 use diesel::sqlite::Sqlite;
 #[cfg(feature = "diesel")]
-use diesel::{backend::Backend, deserialize, serialize, sql_types::Binary};
+use diesel::{backend::Backend, deserialize, serialize, sql_types::Binary, sql_types::Text};
 #[cfg(feature = "serde")]
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
@@ -23,12 +25,25 @@ impl DevAddrPrefix {
         DevAddrPrefix(prefix, size)
     }
 
+    pub fn is_subset_of(&self, other: &DevAddrPrefix) -> bool {
+        self.range_min() >= other.range_min() && self.range_max() <= other.range_max()
+    }
+
     fn prefix(&self) -> [u8; 4] {
         self.0
     }
 
     fn size(&self) -> u32 {
         self.1
+    }
+
+    fn range_min(&self) -> u32 {
+        let mask = u32::from_be_bytes(self.prefix());
+        mask & (u32::MAX << (32 - self.size()))
+    }
+
+    fn range_max(&self) -> u32 {
+        self.range_min() + (u32::MAX >> self.size())
     }
 }
 
@@ -58,6 +73,10 @@ impl FromStr for DevAddrPrefix {
         }
 
         if parts[0].len() != 8 {
+            return Err(Error::DevAddrPrefixFormat);
+        }
+
+        if size > 32 {
             return Err(Error::DevAddrPrefixFormat);
         }
 
@@ -104,6 +123,37 @@ impl Visitor<'_> for DevAddrPrefixVisitor {
         E: de::Error,
     {
         DevAddrPrefix::from_str(value).map_err(|e| E::custom(format!("{}", e)))
+    }
+}
+
+#[cfg(feature = "postgres")]
+impl deserialize::FromSql<Text, Pg> for DevAddrPrefix {
+    fn from_sql(bytes: <Pg as Backend>::RawValue<'_>) -> deserialize::Result<Self> {
+        let value = <String as deserialize::FromSql<Text, Pg>>::from_sql(bytes)?;
+        Ok(DevAddrPrefix::from_str(&value)?)
+    }
+}
+
+#[cfg(feature = "postgres")]
+impl serialize::ToSql<Text, Pg> for DevAddrPrefix {
+    fn to_sql<'b>(&'b self, out: &mut serialize::Output<'b, '_, Pg>) -> serialize::Result {
+        <String as serialize::ToSql<Text, Pg>>::to_sql(&self.to_string(), &mut out.reborrow())
+    }
+}
+
+#[cfg(feature = "sqlite")]
+impl deserialize::FromSql<Text, Sqlite> for DevAddrPrefix {
+    fn from_sql(bytes: <Sqlite as Backend>::RawValue<'_>) -> deserialize::Result<Self> {
+        let value = <String as deserialize::FromSql<Text, Sqlite>>::from_sql(bytes)?;
+        Ok(DevAddrPrefix::from_str(&value)?)
+    }
+}
+
+#[cfg(feature = "sqlite")]
+impl serialize::ToSql<Text, Sqlite> for DevAddrPrefix {
+    fn to_sql<'b>(&'b self, out: &mut serialize::Output<'b, '_, Sqlite>) -> serialize::Result {
+        out.set_value(self.to_string());
+        Ok(serialize::IsNull::No)
     }
 }
 
@@ -253,42 +303,45 @@ impl Serialize for DevAddr {
     }
 }
 
-#[cfg(feature = "diesel")]
-impl<ST, DB> deserialize::FromSql<ST, DB> for DevAddr
-where
-    DB: Backend,
-    *const [u8]: deserialize::FromSql<ST, DB>,
-{
-    fn from_sql(value: <DB as Backend>::RawValue<'_>) -> deserialize::Result<Self> {
-        let bytes = <Vec<u8> as deserialize::FromSql<ST, DB>>::from_sql(value)?;
-        if bytes.len() != 4 {
+#[cfg(feature = "postgres")]
+impl deserialize::FromSql<Binary, Pg> for DevAddr {
+    fn from_sql(bytes: <Pg as Backend>::RawValue<'_>) -> deserialize::Result<Self> {
+        let value = <Vec<u8> as deserialize::FromSql<Binary, Pg>>::from_sql(bytes)?;
+        if value.len() != 4 {
             return Err("DevAddr type expects exactly 4 bytes".into());
         }
 
         let mut b: [u8; 4] = [0; 4];
-        b.copy_from_slice(&bytes);
-
+        b.copy_from_slice(&value);
         Ok(DevAddr(b))
     }
 }
 
 #[cfg(feature = "postgres")]
-impl serialize::ToSql<Binary, diesel::pg::Pg> for DevAddr
-where
-    [u8]: serialize::ToSql<Binary, diesel::pg::Pg>,
-{
-    fn to_sql(&self, out: &mut serialize::Output<'_, '_, diesel::pg::Pg>) -> serialize::Result {
-        <[u8] as serialize::ToSql<Binary, diesel::pg::Pg>>::to_sql(
-            &self.to_be_bytes(),
-            &mut out.reborrow(),
-        )
+impl serialize::ToSql<Binary, Pg> for DevAddr {
+    fn to_sql<'b>(&'b self, out: &mut serialize::Output<'b, '_, Pg>) -> serialize::Result {
+        <[u8] as serialize::ToSql<Binary, Pg>>::to_sql(&self.to_be_bytes(), &mut out.reborrow())
+    }
+}
+
+#[cfg(feature = "sqlite")]
+impl deserialize::FromSql<Binary, Sqlite> for DevAddr {
+    fn from_sql(bytes: <Sqlite as Backend>::RawValue<'_>) -> deserialize::Result<Self> {
+        let value = <Vec<u8> as deserialize::FromSql<Binary, Sqlite>>::from_sql(bytes)?;
+        if value.len() != 4 {
+            return Err("DevAddr type expects exactly 4 bytes".into());
+        }
+
+        let mut b: [u8; 4] = [0; 4];
+        b.copy_from_slice(&value);
+        Ok(DevAddr(b))
     }
 }
 
 #[cfg(feature = "sqlite")]
 impl serialize::ToSql<Binary, Sqlite> for DevAddr {
     fn to_sql<'b>(&'b self, out: &mut serialize::Output<'b, '_, Sqlite>) -> serialize::Result {
-        out.set_value(Vec::from(self.to_be_bytes().as_slice()));
+        out.set_value(self.to_be_bytes().to_vec());
         Ok(serialize::IsNull::No)
     }
 }
@@ -387,5 +440,78 @@ mod tests {
             devaddr.set_dev_addr_prefix(tst.netid.dev_addr_prefix());
             assert_eq!(tst.expected_devaddr, devaddr);
         }
+    }
+
+    #[test]
+    fn test_prefix_is_subset() {
+        assert!(
+            DevAddrPrefix::from_str("ffff0000/16")
+                .unwrap()
+                .is_subset_of(&DevAddrPrefix::from_str("ff000000/8").unwrap()),
+            "prefix was not a subset"
+        );
+
+        assert!(
+            DevAddrPrefix::from_str("ffff0000/16")
+                .unwrap()
+                .is_subset_of(&DevAddrPrefix::from_str("ffff0000/16").unwrap()),
+            "prefix was not equal"
+        );
+
+        assert!(
+            !DevAddrPrefix::from_str("ffff0000/15")
+                .unwrap()
+                .is_subset_of(&DevAddrPrefix::from_str("ffff0000/16").unwrap()),
+            "prefix was a sub-set"
+        );
+
+        assert!(
+            DevAddrPrefix::from_str("00000000/16")
+                .unwrap()
+                .is_subset_of(&DevAddrPrefix::from_str("00000000/15").unwrap()),
+            "prefix was not a sub-set"
+        );
+
+        assert!(
+            !DevAddrPrefix::from_str("00000000/15")
+                .unwrap()
+                .is_subset_of(&DevAddrPrefix::from_str("00000000/16").unwrap()),
+            "prefix was a sub-set"
+        );
+
+        assert!(
+            DevAddrPrefix::from_str("00000000/8")
+                .unwrap()
+                .is_subset_of(&DevAddrPrefix::from_str("00000000/7").unwrap()),
+            "prefix was not a sub-set"
+        );
+
+        assert!(
+            !DevAddrPrefix::from_str("80000000/8")
+                .unwrap()
+                .is_subset_of(&DevAddrPrefix::from_str("00000000/8").unwrap()),
+            "prefix was a sub-set"
+        );
+
+        assert!(
+            !DevAddrPrefix::from_str("00010000/16")
+                .unwrap()
+                .is_subset_of(&DevAddrPrefix::from_str("00030000/16").unwrap()),
+            "prefix was a sub-set"
+        );
+
+        assert!(
+            !DevAddrPrefix::from_str("00020000/15")
+                .unwrap()
+                .is_subset_of(&DevAddrPrefix::from_str("00030000/16").unwrap()),
+            "prefix was a sub-set"
+        );
+
+        assert!(
+            DevAddrPrefix::from_str("00030000/16")
+                .unwrap()
+                .is_subset_of(&DevAddrPrefix::from_str("00020000/15").unwrap()),
+            "prefix was not a sub-set"
+        );
     }
 }

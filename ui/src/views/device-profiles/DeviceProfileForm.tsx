@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 
-import { Form, Input, Select, InputNumber, Switch, Row, Col, Button, Tabs, Modal, Spin, Cascader, Card } from "antd";
+import { Form, Input, Select, InputNumber, Switch, Row, Col, Button, Tabs, Card } from "antd";
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
+import type { TabsProps, SelectProps } from "antd/lib";
 
 import {
   DeviceProfile,
@@ -19,165 +20,36 @@ import {
 import { Region, MacVersion, RegParamsRevision } from "@chirpstack/chirpstack-api-grpc-web/common/common_pb";
 import type { ListRegionsResponse, RegionListItem } from "@chirpstack/chirpstack-api-grpc-web/api/internal_pb";
 import type { ListDeviceProfileAdrAlgorithmsResponse } from "@chirpstack/chirpstack-api-grpc-web/api/device_profile_pb";
-import type {
-  ListDeviceProfileTemplatesResponse,
-  GetDeviceProfileTemplateResponse,
-  DeviceProfileTemplateListItem,
-  DeviceProfileTemplate,
-} from "@chirpstack/chirpstack-api-grpc-web/api/device_profile_template_pb";
-import {
-  ListDeviceProfileTemplatesRequest,
-  GetDeviceProfileTemplateRequest,
-} from "@chirpstack/chirpstack-api-grpc-web/api/device_profile_template_pb";
 
 import { getEnumName, onFinishFailed } from "../helpers";
 import InternalStore from "../../stores/InternalStore";
 import DeviceProfileStore from "../../stores/DeviceProfileStore";
-import DeviceProfileTemplateStore from "../../stores/DeviceProfileTemplateStore";
 import CodeEditor from "../../components/CodeEditor";
-
-interface ModalProps {
-  onOk: (dp: DeviceProfileTemplate) => void;
-  onCancel: () => void;
-  visible: boolean;
-}
-
-interface Option {
-  value: string;
-  label: string;
-  children?: Option[];
-}
-
-function TemplateModal(props: ModalProps) {
-  const [templates, setTemplates] = useState<DeviceProfileTemplateListItem[]>([]);
-  const [templatesLoaded, setTemplatesLoaded] = useState<boolean>(false);
-  const [templateId, setTemplateId] = useState<string | undefined>(undefined);
-
-  useEffect(() => {
-    if (props.visible) {
-      setTemplatesLoaded(false);
-
-      const req = new ListDeviceProfileTemplatesRequest();
-      req.setLimit(99999);
-
-      DeviceProfileTemplateStore.list(req, (resp: ListDeviceProfileTemplatesResponse) => {
-        setTemplatesLoaded(true);
-        setTemplates(resp.getResultList());
-      });
-    }
-  }, [props]);
-
-  const onChange = (value: (string | number)[]) => {
-    setTemplateId(value.at(-1)! as string);
-  };
-
-  const onOk = () => {
-    if (templateId) {
-      const req = new GetDeviceProfileTemplateRequest();
-      req.setId(templateId);
-
-      DeviceProfileTemplateStore.get(req, (resp: GetDeviceProfileTemplateResponse) => {
-        const dp = resp.getDeviceProfileTemplate();
-        if (dp) {
-          props.onOk(dp);
-        }
-      });
-    }
-  };
-
-  const options: Option[] = [];
-  let vendor = "";
-  let device = "";
-  let firmware = "";
-  let region = "";
-
-  for (const item of templates) {
-    if (vendor !== item.getVendor()) {
-      options.push({
-        value: item.getId(),
-        label: item.getVendor(),
-        children: [],
-      });
-
-      vendor = item.getVendor();
-      device = "";
-      firmware = "";
-      region = "";
-    }
-
-    if (device !== item.getName()) {
-      options.at(-1)!.children!.push({
-        value: item.getId(),
-        label: item.getName(),
-        children: [],
-      });
-
-      device = item.getName();
-      firmware = "";
-      region = "";
-    }
-
-    if (firmware !== item.getFirmware()) {
-      options
-        .at(-1)!
-        .children!.at(-1)!
-        .children!.push({
-          value: item.getId(),
-          label: "FW version: " + item.getFirmware(),
-          children: [],
-        });
-
-      firmware = item.getFirmware();
-      region = "";
-    }
-
-    if (region !== getEnumName(Region, item.getRegion())) {
-      options
-        .at(-1)!
-        .children!.at(-1)!
-        .children!.at(-1)!
-        .children!.push({
-          value: item.getId(),
-          label: getEnumName(Region, item.getRegion()),
-          children: [],
-        });
-
-      region = getEnumName(Region, item.getRegion());
-    }
-  }
-
-  return (
-    <Modal
-      title="Select device-profile template"
-      visible={props.visible}
-      width="80%"
-      bodyStyle={{ height: 300 }}
-      onOk={onOk}
-      onCancel={props.onCancel}
-      okButtonProps={{ disabled: !templateId }}
-    >
-      {!templatesLoaded && (
-        <div className="spinner">
-          <Spin />
-        </div>
-      )}
-      {templatesLoaded && (
-        <Cascader
-          style={{ width: "100%" }}
-          placeholder="Select a device-profile template"
-          options={options}
-          onChange={onChange}
-        />
-      )}
-    </Modal>
-  );
-}
 
 interface IProps {
   initialValues: DeviceProfile;
   onFinish: (obj: DeviceProfile) => void;
   disabled?: boolean;
 }
+
+const dataRates: SelectProps["options"] = [
+  { label: "DR0", value: 0 },
+  { label: "DR1", value: 1 },
+  { label: "DR2", value: 2 },
+  { label: "DR3", value: 3 },
+  { label: "DR4", value: 4 },
+  { label: "DR5", value: 5 },
+  { label: "DR6", value: 6 },
+  { label: "DR7", value: 7 },
+  { label: "DR8", value: 8 },
+  { label: "DR9", value: 9 },
+  { label: "DR10", value: 10 },
+  { label: "DR11", value: 11 },
+  { label: "DR12", value: 12 },
+  { label: "DR13", value: 13 },
+  { label: "DR14", value: 14 },
+  { label: "DR15", value: 15 },
+];
 
 function DeviceProfileForm(props: IProps) {
   const [form] = Form.useForm();
@@ -191,7 +63,6 @@ function DeviceProfileForm(props: IProps) {
   const [adrAlgorithms, setAdrAlgorithms] = useState<[string, string][]>([]);
   const [regionConfigurations, setRegionConfigurations] = useState<RegionListItem[]>([]);
   const [regionConfigurationsFiltered, setRegionConfigurationsFiltered] = useState<[string, string][]>([]);
-  const [templateModalVisible, setTemplateModalVisible] = useState<boolean>(false);
   const [tabActive, setTabActive] = useState<string>("1");
 
   useEffect(() => {
@@ -248,6 +119,7 @@ function DeviceProfileForm(props: IProps) {
     dp.setUplinkInterval(v.uplinkInterval);
     dp.setDeviceStatusReqInterval(v.deviceStatusReqInterval);
     dp.setRx1Delay(v.rx1Delay);
+    dp.setSupportedUplinkDataRatesList(v.supportedUplinkDataRatesList);
 
     // join otaa /abp
     dp.setSupportsOtaa(v.supportsOtaa);
@@ -262,6 +134,7 @@ function DeviceProfileForm(props: IProps) {
     dp.setClassBPingSlotPeriodicity(v.classBPingSlotPeriodicity);
     dp.setClassBPingSlotDr(v.classBPingSlotDr);
     dp.setClassBPingSlotFreq(v.classBPingSlotFreq);
+    dp.setClassBDownlinkOnly(v.classBDownlinkOnly);
 
     // class-c
     dp.setSupportsClassC(v.supportsClassC);
@@ -352,51 +225,6 @@ function DeviceProfileForm(props: IProps) {
     setIsRelayEd(checked);
   };
 
-  const showTemplateModal = () => {
-    setTemplateModalVisible(true);
-  };
-
-  const onTemplateModalOk = (dp: DeviceProfileTemplate) => {
-    setTemplateModalVisible(false);
-
-    form.setFieldsValue({
-      name: dp.getName(),
-      description: dp.getDescription(),
-      region: dp.getRegion(),
-      macVersion: dp.getMacVersion(),
-      regParamsRevision: dp.getRegParamsRevision(),
-      adrAlgorithmId: dp.getAdrAlgorithmId(),
-      payloadCodecRuntime: dp.getPayloadCodecRuntime(),
-      payloadCodecScript: dp.getPayloadCodecScript(),
-      flushQueueOnActivate: dp.getFlushQueueOnActivate(),
-      uplinkInterval: dp.getUplinkInterval(),
-      deviceStatusReqInterval: dp.getDeviceStatusReqInterval(),
-      supportsOtaa: dp.getSupportsOtaa(),
-      supportsClassB: dp.getSupportsClassB(),
-      supportsClassC: dp.getSupportsClassC(),
-      classCTimeout: dp.getClassCTimeout(),
-      classBTimeout: dp.getClassBTimeout(),
-      classBPingSlotPeriodicity: dp.getClassBPingSlotPeriodicity(),
-      classBPingSlotDr: dp.getClassBPingSlotDr(),
-      classBPingSlotFreq: dp.getClassBPingSlotFreq(),
-      abpRx1Delay: dp.getAbpRx1Delay(),
-      abpRx2Dr: dp.getAbpRx2Dr(),
-      abpRx2Freq: dp.getAbpRx2Freq(),
-      abpRx1DrOffset: dp.getAbpRx1DrOffset(),
-      tagsMap: dp.toObject().tagsMap,
-      measurementsMap: dp.toObject().measurementsMap,
-    });
-
-    setSupportsOtaa(dp.getSupportsOtaa());
-    setSupportsClassB(dp.getSupportsClassB());
-    setSupportsClassC(dp.getSupportsClassC());
-    setPayloadCodecRuntime(dp.getPayloadCodecRuntime());
-  };
-
-  const onTemplateModalCancel = () => {
-    setTemplateModalVisible(false);
-  };
-
   const onRegionChange = (region: Region) => {
     const regionConfigurationsFiltered: [string, string][] = [];
     for (const r of regionConfigurations) {
@@ -411,29 +239,34 @@ function DeviceProfileForm(props: IProps) {
     });
   };
 
-  const adrOptions = adrAlgorithms.map(v => <Select.Option value={v[0]}>{v[1]}</Select.Option>);
-  const regionConfigOptions = regionConfigurationsFiltered.map(v => <Select.Option value={v[0]}>{v[1]}</Select.Option>);
-  const regionOptions = regionConfigurations
+  const adrOptions: SelectProps["options"] = adrAlgorithms.map(v => {
+    return {
+      label: v[1],
+      value: v[0],
+    };
+  });
+  const regionConfigOptions: SelectProps["options"] = regionConfigurationsFiltered.map(v => {
+    return {
+      label: v[1],
+      value: v[0],
+    };
+  });
+  const regionOptions: SelectProps["options"] = regionConfigurations
     .map(v => v.getRegion())
     .filter((v, i, a) => a.indexOf(v) === i)
-    .map(v => <Select.Option value={v}>{getEnumName(Region, v).replace("_", "-")}</Select.Option>);
-  const operations = (
-    <Button type="primary" onClick={showTemplateModal}>
-      Select device-profile template
-    </Button>
-  );
+    .map(v => {
+      return {
+        label: getEnumName(Region, v).replace("_", "-"),
+        value: v,
+      };
+    });
 
-  return (
-    <Form
-      layout="vertical"
-      initialValues={props.initialValues.toObject()}
-      onFinish={onFinish}
-      onFinishFailed={onFinishFailed}
-      form={form}
-    >
-      <TemplateModal visible={templateModalVisible} onOk={onTemplateModalOk} onCancel={onTemplateModalCancel} />
-      <Tabs tabBarExtraContent={operations} activeKey={tabActive} onChange={onTabChange}>
-        <Tabs.TabPane tab="General" key="1" forceRender>
+  const tabItems: TabsProps["items"] = [
+    {
+      key: "1",
+      label: "General",
+      children: (
+        <>
           <Form.Item label="Name" name="name" rules={[{ required: true, message: "Please enter a name!" }]}>
             <Input disabled={props.disabled} />
           </Form.Item>
@@ -443,9 +276,7 @@ function DeviceProfileForm(props: IProps) {
           <Row gutter={24}>
             <Col span={12}>
               <Form.Item label="Region" name="region" rules={[{ required: true, message: "Please select a region!" }]}>
-                <Select disabled={props.disabled} onChange={onRegionChange}>
-                  {regionOptions}
-                </Select>
+                <Select disabled={props.disabled} onChange={onRegionChange} options={regionOptions} />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -454,9 +285,7 @@ function DeviceProfileForm(props: IProps) {
                 tooltip="By selecting a region configuration, the device will only work within the selected region configuration. If left blank, the device will work under all region configurations of the selected region."
                 name="regionConfigId"
               >
-                <Select disabled={props.disabled} allowClear>
-                  {regionConfigOptions}
-                </Select>
+                <Select disabled={props.disabled} allowClear options={regionConfigOptions} />
               </Form.Item>
             </Col>
           </Row>
@@ -468,14 +297,17 @@ function DeviceProfileForm(props: IProps) {
                 name="macVersion"
                 rules={[{ required: true, message: "Please select a MAC version!" }]}
               >
-                <Select disabled={props.disabled}>
-                  <Select.Option value={MacVersion.LORAWAN_1_0_0}>LoRaWAN 1.0.0</Select.Option>
-                  <Select.Option value={MacVersion.LORAWAN_1_0_1}>LoRaWAN 1.0.1</Select.Option>
-                  <Select.Option value={MacVersion.LORAWAN_1_0_2}>LoRaWAN 1.0.2</Select.Option>
-                  <Select.Option value={MacVersion.LORAWAN_1_0_3}>LoRaWAN 1.0.3</Select.Option>
-                  <Select.Option value={MacVersion.LORAWAN_1_0_4}>LoRaWAN 1.0.4</Select.Option>
-                  <Select.Option value={MacVersion.LORAWAN_1_1_0}>LoRaWAN 1.1.0</Select.Option>
-                </Select>
+                <Select
+                  disabled={props.disabled}
+                  options={[
+                    { value: MacVersion.LORAWAN_1_0_0, label: "LoRaWAN 1.0.0" },
+                    { value: MacVersion.LORAWAN_1_0_1, label: "LoRaWAN 1.0.1" },
+                    { value: MacVersion.LORAWAN_1_0_2, label: "LoRaWAN 1.0.2" },
+                    { value: MacVersion.LORAWAN_1_0_3, label: "LoRaWAN 1.0.3" },
+                    { value: MacVersion.LORAWAN_1_0_4, label: "LoRaWAN 1.0.4" },
+                    { value: MacVersion.LORAWAN_1_1_0, label: "LoRaWAN 1.1.0" },
+                  ]}
+                />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -490,15 +322,19 @@ function DeviceProfileForm(props: IProps) {
                   },
                 ]}
               >
-                <Select disabled={props.disabled}>
-                  <Select.Option value={RegParamsRevision.A}>A</Select.Option>
-                  <Select.Option value={RegParamsRevision.B}>B</Select.Option>
-                  <Select.Option value={RegParamsRevision.RP002_1_0_0}>RP002-1.0.0</Select.Option>
-                  <Select.Option value={RegParamsRevision.RP002_1_0_1}>RP002-1.0.1</Select.Option>
-                  <Select.Option value={RegParamsRevision.RP002_1_0_2}>RP002-1.0.2</Select.Option>
-                  <Select.Option value={RegParamsRevision.RP002_1_0_3}>RP002-1.0.3</Select.Option>
-                  <Select.Option value={RegParamsRevision.RP002_1_0_4}>RP002-1.0.4</Select.Option>
-                </Select>
+                <Select
+                  disabled={props.disabled}
+                  options={[
+                    { value: RegParamsRevision.A, label: "A" },
+                    { value: RegParamsRevision.B, label: "B" },
+                    { value: RegParamsRevision.RP002_1_0_0, label: "RP002-1.0.0" },
+                    { value: RegParamsRevision.RP002_1_0_1, label: "RP002-1.0.1" },
+                    { value: RegParamsRevision.RP002_1_0_2, label: "RP002-1.0.2" },
+                    { value: RegParamsRevision.RP002_1_0_3, label: "RP002-1.0.3" },
+                    { value: RegParamsRevision.RP002_1_0_4, label: "RP002-1.0.4" },
+                    { value: RegParamsRevision.RP002_1_0_5, label: "RP002-1.0.5" },
+                  ]}
+                />
               </Form.Item>
             </Col>
           </Row>
@@ -508,7 +344,7 @@ function DeviceProfileForm(props: IProps) {
             name="adrAlgorithmId"
             rules={[{ required: true, message: "Please select an ADR algorithm!" }]}
           >
-            <Select disabled={props.disabled}>{adrOptions}</Select>
+            <Select disabled={props.disabled} options={adrOptions} />
           </Form.Item>
           <Row gutter={24}>
             <Col span={12}>
@@ -533,7 +369,7 @@ function DeviceProfileForm(props: IProps) {
             </Col>
           </Row>
           <Row>
-            <Col span={8}>
+            <Col span={12}>
               <Form.Item
                 label="Expected uplink interval (secs)"
                 tooltip="The expected interval in seconds in which the device sends uplink messages. This is used to determine if a device is active or inactive."
@@ -548,7 +384,7 @@ function DeviceProfileForm(props: IProps) {
                 <InputNumber min={0} disabled={props.disabled} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col span={12}>
               <Form.Item
                 label="Device-status request frequency (req/day)"
                 tooltip="Frequency to initiate an End-Device status request (request/day). Set to 0 to disable."
@@ -557,7 +393,9 @@ function DeviceProfileForm(props: IProps) {
                 <InputNumber min={0} disabled={props.disabled} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+          </Row>
+          <Row>
+            <Col span={12}>
               <Form.Item
                 label="RX1 Delay (0 = use system default)"
                 tooltip="This option makes it possible to set a higher RX1 Delay for devices using this device-profile. Note that a lower value than the system default will be ignored. If configured and incremented, then ChirpStack will increase the downlink data delay with the same increment."
@@ -566,9 +404,24 @@ function DeviceProfileForm(props: IProps) {
                 <InputNumber min={0} max={15} disabled={props.disabled} />
               </Form.Item>
             </Col>
+            <Col span={12}>
+              <Form.Item
+                label="Supported data-rates"
+                tooltip="If not set, the default region data-rates will be used (which is most likely what you want). Only set this value if you know what you are doing."
+                name="supportedUplinkDataRatesList"
+              >
+                <Select mode="multiple" options={dataRates} disabled={props.disabled} allowClear />
+              </Form.Item>
+            </Col>
           </Row>
-        </Tabs.TabPane>
-        <Tabs.TabPane tab="Join (OTAA / ABP)" key="2" forceRender>
+        </>
+      ),
+    },
+    {
+      key: "2",
+      label: "Join (OTAA / ABP)",
+      children: (
+        <>
           <Form.Item label="Device supports OTAA" name="supportsOtaa" valuePropName="checked">
             <Switch onChange={onSupportsOtaaChange} disabled={props.disabled} />
           </Form.Item>
@@ -635,8 +488,14 @@ function DeviceProfileForm(props: IProps) {
               </Col>
             </Row>
           )}
-        </Tabs.TabPane>
-        <Tabs.TabPane tab="Class-B" key="3" forceRender>
+        </>
+      ),
+    },
+    {
+      key: "3",
+      label: "Class B",
+      children: (
+        <>
           <Form.Item label="Device supports Class-B" name="supportsClassB" valuePropName="checked">
             <Switch onChange={onSupportsClassBChnage} disabled={props.disabled} />
           </Form.Item>
@@ -670,21 +529,24 @@ function DeviceProfileForm(props: IProps) {
                       },
                     ]}
                   >
-                    <Select disabled={props.disabled}>
-                      <Select.Option value={0}>Every second</Select.Option>
-                      <Select.Option value={1}>Every 2 seconds</Select.Option>
-                      <Select.Option value={2}>Every 4 seconds</Select.Option>
-                      <Select.Option value={3}>Every 8 seconds</Select.Option>
-                      <Select.Option value={4}>Every 16 seconds</Select.Option>
-                      <Select.Option value={5}>Every 32 seconds</Select.Option>
-                      <Select.Option value={6}>Every 64 seconds</Select.Option>
-                      <Select.Option value={7}>Every 128 seconds</Select.Option>
-                    </Select>
+                    <Select
+                      disabled={props.disabled}
+                      options={[
+                        { value: 0, label: "Every second" },
+                        { value: 1, label: "Every 2 seconds" },
+                        { value: 2, label: "Every 4 seconds" },
+                        { value: 3, label: "Every 8 seconds" },
+                        { value: 4, label: "Every 16 seconds" },
+                        { value: 5, label: "Every 32 seconds" },
+                        { value: 6, label: "Every 64 seconds" },
+                        { value: 7, label: "Every 128 seconds" },
+                      ]}
+                    ></Select>
                   </Form.Item>
                 </Col>
               </Row>
               <Row gutter={24}>
-                <Col span={12}>
+                <Col span={8}>
                   <Form.Item
                     label="Class-B ping-slot data-rate"
                     tooltip="This value must match the ping-slot data-rate of the device. Please refer to the device documentation."
@@ -699,7 +561,7 @@ function DeviceProfileForm(props: IProps) {
                     <InputNumber min={0} disabled={props.disabled} />
                   </Form.Item>
                 </Col>
-                <Col span={12}>
+                <Col span={8}>
                   <Form.Item
                     label="Class-B ping-slot frequency (Hz)"
                     tooltip="This value must match the ping-slot frequency of the device. Please refer to the device documentation."
@@ -714,11 +576,26 @@ function DeviceProfileForm(props: IProps) {
                     <InputNumber min={0} style={{ width: "200px" }} disabled={props.disabled} />
                   </Form.Item>
                 </Col>
+                <Col span={8}>
+                  <Form.Item
+                    label="Class-B downlink only"
+                    tooltip="If set and if the device operates as Class-B enabled device, ChirpStack will only send application payloads as ping-slot downlinks"
+                    name="classBDownlinkOnly"
+                  >
+                    <Switch disabled={props.disabled} />
+                  </Form.Item>
+                </Col>
               </Row>
             </>
           )}
-        </Tabs.TabPane>
-        <Tabs.TabPane tab="Class-C" key="4" forceRender>
+        </>
+      ),
+    },
+    {
+      key: "4",
+      label: "Class-C",
+      children: (
+        <>
           <Form.Item label="Device supports Class-C" name="supportsClassC" valuePropName="checked">
             <Switch onChange={onSupportsClassCChange} disabled={props.disabled} />
           </Form.Item>
@@ -737,24 +614,40 @@ function DeviceProfileForm(props: IProps) {
               <InputNumber min={0} disabled={props.disabled} />
             </Form.Item>
           )}
-        </Tabs.TabPane>
-        <Tabs.TabPane tab="Codec" key="5" forceRender>
+        </>
+      ),
+    },
+    {
+      key: "5",
+      label: "Payload codec",
+      children: (
+        <>
           <Form.Item
             label="Payload codec"
             name="payloadCodecRuntime"
             tooltip="By defining a payload codec, ChirpStack can encode and decode the binary device payload for you."
           >
-            <Select onChange={onPayloadCodecRuntimeChange} disabled={props.disabled}>
-              <Select.Option value={CodecRuntime.NONE}>None</Select.Option>
-              <Select.Option value={CodecRuntime.CAYENNE_LPP}>Cayenne LPP</Select.Option>
-              <Select.Option value={CodecRuntime.JS}>JavaScript functions</Select.Option>
-            </Select>
+            <Select
+              onChange={onPayloadCodecRuntimeChange}
+              disabled={props.disabled}
+              options={[
+                { value: CodecRuntime.NONE, label: "None" },
+                { value: CodecRuntime.CAYENNE_LPP, label: "Cayenne LPP" },
+                { value: CodecRuntime.JS, label: "JavaScript functions" },
+              ]}
+            />
           </Form.Item>
           {payloadCodecRuntime === CodecRuntime.JS && (
             <CodeEditor label="Codec functions" name="payloadCodecScript" disabled={props.disabled} />
           )}
-        </Tabs.TabPane>
-        <Tabs.TabPane tab="Relay" key="6" forceRender>
+        </>
+      ),
+    },
+    {
+      key: "6",
+      label: "Relay",
+      children: (
+        <>
           <Row gutter={24}>
             <Col span={12}>
               <Form.Item
@@ -849,14 +742,17 @@ function DeviceProfileForm(props: IProps) {
                   name="relaySecondChannelAckOffset"
                   rules={[{ required: true, message: "Please select an ACK offset!" }]}
                 >
-                  <Select disabled={props.disabled}>
-                    <Select.Option value={SecondChAckOffset.KHZ_0}>0 kHz</Select.Option>
-                    <Select.Option value={SecondChAckOffset.KHZ_200}>200 kHz</Select.Option>
-                    <Select.Option value={SecondChAckOffset.KHZ_400}>400 kHz</Select.Option>
-                    <Select.Option value={SecondChAckOffset.KHZ_800}>800 kHz</Select.Option>
-                    <Select.Option value={SecondChAckOffset.KHZ_1600}>1600 kHz</Select.Option>
-                    <Select.Option value={SecondChAckOffset.KHZ_3200}>3200 kHz</Select.Option>
-                  </Select>
+                  <Select
+                    disabled={props.disabled}
+                    options={[
+                      { value: SecondChAckOffset.KHZ_0, label: "0 kHz" },
+                      { value: SecondChAckOffset.KHZ_200, label: "200 kHz" },
+                      { value: SecondChAckOffset.KHZ_400, label: "400 kHz" },
+                      { value: SecondChAckOffset.KHZ_800, label: "800 kHz" },
+                      { value: SecondChAckOffset.KHZ_1600, label: "1600 kHz" },
+                      { value: SecondChAckOffset.KHZ_3200, label: "3200 kHz" },
+                    ]}
+                  />
                 </Form.Item>
               </Col>
               <Col span={12}>
@@ -871,14 +767,17 @@ function DeviceProfileForm(props: IProps) {
                       },
                     ]}
                   >
-                    <Select disabled={props.disabled}>
-                      <Select.Option value={CadPeriodicity.SEC_1}>1 second</Select.Option>
-                      <Select.Option value={CadPeriodicity.MS_500}>500 milliseconds</Select.Option>
-                      <Select.Option value={CadPeriodicity.MS_250}>250 milliseconds</Select.Option>
-                      <Select.Option value={CadPeriodicity.MS_100}>100 milliseconds</Select.Option>
-                      <Select.Option value={CadPeriodicity.MS_50}>50 milliseconds</Select.Option>
-                      <Select.Option value={CadPeriodicity.MS_20}>20 milliseconds</Select.Option>
-                    </Select>
+                    <Select
+                      disabled={props.disabled}
+                      options={[
+                        { value: CadPeriodicity.SEC_1, label: "1 second" },
+                        { value: CadPeriodicity.MS_500, label: "500 milliseconds" },
+                        { value: CadPeriodicity.MS_250, label: "250 milliseconds" },
+                        { value: CadPeriodicity.MS_100, label: "100 milliseconds" },
+                        { value: CadPeriodicity.MS_50, label: "50 milliseconds" },
+                        { value: CadPeriodicity.MS_20, label: "20 milliseconds" },
+                      ]}
+                    />
                   </Form.Item>
                 )}
               </Col>
@@ -897,14 +796,15 @@ function DeviceProfileForm(props: IProps) {
                     },
                   ]}
                 >
-                  <Select disabled={props.disabled}>
-                    <Select.Option value={RelayModeActivation.DISABLE_RELAY_MODE}>Disable relay mode</Select.Option>
-                    <Select.Option value={RelayModeActivation.ENABLE_RELAY_MODE}>Enable relay mode</Select.Option>
-                    <Select.Option value={RelayModeActivation.DYNAMIC}>Dynamic</Select.Option>
-                    <Select.Option value={RelayModeActivation.END_DEVICE_CONTROLLED}>
-                      End-device controlled
-                    </Select.Option>
-                  </Select>
+                  <Select
+                    disabled={props.disabled}
+                    options={[
+                      { value: RelayModeActivation.DISABLE_RELAY_MODE, label: "Disable relay mode" },
+                      { value: RelayModeActivation.ENABLE_RELAY_MODE, label: "Enable relay mode" },
+                      { value: RelayModeActivation.DYNAMIC, label: "Dynamic" },
+                      { value: RelayModeActivation.END_DEVICE_CONTROLLED, label: "End-device controlled" },
+                    ]}
+                  />
                 </Form.Item>
               </Col>
               <Col span={8}>
@@ -919,12 +819,15 @@ function DeviceProfileForm(props: IProps) {
                     },
                   ]}
                 >
-                  <Select disabled={props.disabled}>
-                    <Select.Option value={0}>8</Select.Option>
-                    <Select.Option value={1}>16</Select.Option>
-                    <Select.Option value={2}>32</Select.Option>
-                    <Select.Option value={3}>64</Select.Option>
-                  </Select>
+                  <Select
+                    disabled={props.disabled}
+                    options={[
+                      { value: 0, label: "8" },
+                      { value: 1, label: "16" },
+                      { value: 2, label: "32" },
+                      { value: 3, label: "64" },
+                    ]}
+                  />
                 </Form.Item>
               </Col>
               <Col span={8}>
@@ -946,12 +849,15 @@ function DeviceProfileForm(props: IProps) {
                   name="relayEdUplinkLimitBucketSize"
                   tooltip="Indicates the multiplier to determine the bucket size"
                 >
-                  <Select disabled={props.disabled}>
-                    <Select.Option value={0}>1 x reload rate</Select.Option>
-                    <Select.Option value={1}>2 x reload rate</Select.Option>
-                    <Select.Option value={2}>4 x reload rate</Select.Option>
-                    <Select.Option value={3}>12 x reload rate</Select.Option>
-                  </Select>
+                  <Select
+                    disabled={props.disabled}
+                    options={[
+                      { value: 0, label: "1 x reload rate" },
+                      { value: 1, label: "2 x reload rate" },
+                      { value: 2, label: "4 x reload rate" },
+                      { value: 3, label: "12 x reload rate" },
+                    ]}
+                  />
                 </Form.Item>
               </Col>
               <Col span={12}>
@@ -973,12 +879,15 @@ function DeviceProfileForm(props: IProps) {
                   name="relayJoinReqLimitBucketSize"
                   tooltip="Indicates the multiplier to determine the bucket size"
                 >
-                  <Select disabled={props.disabled}>
-                    <Select.Option value={0}>1 x reload rate</Select.Option>
-                    <Select.Option value={1}>2 x reload rate</Select.Option>
-                    <Select.Option value={2}>4 x reload rate</Select.Option>
-                    <Select.Option value={3}>12 x reload rate</Select.Option>
-                  </Select>
+                  <Select
+                    disabled={props.disabled}
+                    options={[
+                      { value: 0, label: "1 x reload rate" },
+                      { value: 1, label: "2 x reload rate" },
+                      { value: 2, label: "4 x reload rate" },
+                      { value: 3, label: "12 x reload rate" },
+                    ]}
+                  />
                 </Form.Item>
               </Col>
               <Col span={6}>
@@ -996,12 +905,15 @@ function DeviceProfileForm(props: IProps) {
                   name="relayNotifyLimitBucketSize"
                   tooltip="Indicates the multiplier to determine the bucket size"
                 >
-                  <Select disabled={props.disabled}>
-                    <Select.Option value={0}>1 x reload rate</Select.Option>
-                    <Select.Option value={1}>2 x reload rate</Select.Option>
-                    <Select.Option value={2}>4 x reload rate</Select.Option>
-                    <Select.Option value={3}>12 x reload rate</Select.Option>
-                  </Select>
+                  <Select
+                    disabled={props.disabled}
+                    options={[
+                      { value: 0, label: "1 x reload rate" },
+                      { value: 1, label: "2 x reload rate" },
+                      { value: 2, label: "4 x reload rate" },
+                      { value: 3, label: "12 x reload rate" },
+                    ]}
+                  />
                 </Form.Item>
               </Col>
               <Col span={6}>
@@ -1023,12 +935,15 @@ function DeviceProfileForm(props: IProps) {
                   name="relayGlobalUplinkLimitBucketSize"
                   tooltip="Indicates the multiplier to determine the bucket size"
                 >
-                  <Select disabled={props.disabled}>
-                    <Select.Option value={0}>1 x reload rate</Select.Option>
-                    <Select.Option value={1}>2 x reload rate</Select.Option>
-                    <Select.Option value={2}>4 x reload rate</Select.Option>
-                    <Select.Option value={3}>12 x reload rate</Select.Option>
-                  </Select>
+                  <Select
+                    disabled={props.disabled}
+                    options={[
+                      { value: 0, label: "1 x reload rate" },
+                      { value: 1, label: "2 x reload rate" },
+                      { value: 2, label: "4 x reload rate" },
+                      { value: 3, label: "12 x reload rate" },
+                    ]}
+                  />
                 </Form.Item>
               </Col>
               <Col span={6}>
@@ -1046,12 +961,15 @@ function DeviceProfileForm(props: IProps) {
                   name="relayOverallLimitBucketSize"
                   tooltip="Indicates the multiplier to determine the bucket size"
                 >
-                  <Select disabled={props.disabled}>
-                    <Select.Option value={0}>1 x reload rate</Select.Option>
-                    <Select.Option value={1}>2 x reload rate</Select.Option>
-                    <Select.Option value={2}>4 x reload rate</Select.Option>
-                    <Select.Option value={3}>12 x reload rate</Select.Option>
-                  </Select>
+                  <Select
+                    disabled={props.disabled}
+                    options={[
+                      { value: 0, label: "1 x reload rate" },
+                      { value: 1, label: "2 x reload rate" },
+                      { value: 2, label: "4 x reload rate" },
+                      { value: 3, label: "12 x reload rate" },
+                    ]}
+                  />
                 </Form.Item>
               </Col>
               <Col span={6}>
@@ -1065,8 +983,14 @@ function DeviceProfileForm(props: IProps) {
               </Col>
             </Row>
           )}
-        </Tabs.TabPane>
-        <Tabs.TabPane tab="Application layer" key="7" forceRender>
+        </>
+      ),
+    },
+    {
+      key: "7",
+      label: "Application layer",
+      children: (
+        <>
           <Row gutter={24}>
             <Col span={12}>
               <Form.Item
@@ -1074,11 +998,14 @@ function DeviceProfileForm(props: IProps) {
                 name={["appLayerParams", "ts003Version"]}
                 tooltip="If an implemented version is selected, ChirpStack will handle payloads received on the matching fPort"
               >
-                <Select disabled={props.disabled}>
-                  <Select.Option value={Ts003Version.TS003_NOT_IMPLEMENTED}>Not implemented</Select.Option>
-                  <Select.Option value={Ts003Version.TS003_V100}>v1.0.0</Select.Option>
-                  <Select.Option value={Ts003Version.TS003_V200}>v2.0.0</Select.Option>
-                </Select>
+                <Select
+                  disabled={props.disabled}
+                  options={[
+                    { value: Ts003Version.TS003_NOT_IMPLEMENTED, label: "Not implemented" },
+                    { value: Ts003Version.TS003_V100, label: "v1.0.0" },
+                    { value: Ts003Version.TS003_V200, label: "v2.0.0" },
+                  ]}
+                />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -1094,11 +1021,14 @@ function DeviceProfileForm(props: IProps) {
                 name={["appLayerParams", "ts004Version"]}
                 tooltip="If an implemented version is selected, ChirpStack will handle payloads received on the matching fPort"
               >
-                <Select disabled={props.disabled}>
-                  <Select.Option value={Ts004Version.TS004_NOT_IMPLEMENTED}>Not implemented</Select.Option>
-                  <Select.Option value={Ts004Version.TS004_V100}>v1.0.0</Select.Option>
-                  <Select.Option value={Ts004Version.TS004_V200}>v2.0.0</Select.Option>
-                </Select>
+                <Select
+                  disabled={props.disabled}
+                  options={[
+                    { value: Ts004Version.TS004_NOT_IMPLEMENTED, label: "Not implemented" },
+                    { value: Ts004Version.TS004_V100, label: "v1.0.0" },
+                    { value: Ts004Version.TS004_V200, label: "v2.0.0" },
+                  ]}
+                />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -1114,11 +1044,14 @@ function DeviceProfileForm(props: IProps) {
                 name={["appLayerParams", "ts005Version"]}
                 tooltip="If an implemented version is selected, ChirpStack will handle payloads received on the matching fPort"
               >
-                <Select disabled={props.disabled}>
-                  <Select.Option value={Ts005Version.TS005_NOT_IMPLEMENTED}>Not implemented</Select.Option>
-                  <Select.Option value={Ts005Version.TS005_V100}>v1.0.0</Select.Option>
-                  <Select.Option value={Ts005Version.TS005_V200}>v2.0.0</Select.Option>
-                </Select>
+                <Select
+                  disabled={props.disabled}
+                  options={[
+                    { value: Ts005Version.TS005_NOT_IMPLEMENTED, label: "Not implemented" },
+                    { value: Ts005Version.TS005_V100, label: "v1.0.0" },
+                    { value: Ts005Version.TS005_V200, label: "v2.0.0" },
+                  ]}
+                />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -1127,49 +1060,57 @@ function DeviceProfileForm(props: IProps) {
               </Form.Item>
             </Col>
           </Row>
-        </Tabs.TabPane>
-        <Tabs.TabPane tab="Tags" key="8" forceRender>
-          <Form.List name="tagsMap">
-            {(fields, { add, remove }) => (
-              <>
-                {fields.map(({ key, name, ...restField }) => (
-                  <Row gutter={24}>
-                    <Col span={6}>
-                      <Form.Item
-                        {...restField}
-                        name={[name, 0]}
-                        fieldKey={[name, 0]}
-                        rules={[{ required: true, message: "Please enter a key!" }]}
-                      >
-                        <Input placeholder="Key" disabled={props.disabled} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={16}>
-                      <Form.Item
-                        {...restField}
-                        name={[name, 1]}
-                        fieldKey={[name, 1]}
-                        rules={[{ required: true, message: "Please enter a value!" }]}
-                      >
-                        <Input placeholder="Value" disabled={props.disabled} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={2}>
-                      <MinusCircleOutlined onClick={() => remove(name)} />
-                    </Col>
-                  </Row>
-                ))}
-                <Form.Item>
-                  <Button disabled={props.disabled} type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
-                    Add tag
-                  </Button>
-                </Form.Item>
-              </>
-            )}
-          </Form.List>
-        </Tabs.TabPane>
-        <Tabs.TabPane tab="Measurements" key="9" forceRender>
-          <Card bordered={false}>
+        </>
+      ),
+    },
+    {
+      key: "8",
+      label: "Tags",
+      children: (
+        <Form.List name="tagsMap">
+          {(fields, { add, remove }) => (
+            <>
+              {fields.map(({ key, name, ...restField }) => (
+                <Row gutter={24} key={key}>
+                  <Col span={6}>
+                    <Form.Item
+                      {...restField}
+                      name={[name, 0]}
+                      rules={[{ required: true, message: "Please enter a key!" }]}
+                    >
+                      <Input placeholder="Key" disabled={props.disabled} />
+                    </Form.Item>
+                  </Col>
+                  <Col span={16}>
+                    <Form.Item
+                      {...restField}
+                      name={[name, 1]}
+                      rules={[{ required: true, message: "Please enter a value!" }]}
+                    >
+                      <Input placeholder="Value" disabled={props.disabled} />
+                    </Form.Item>
+                  </Col>
+                  <Col span={2}>
+                    <MinusCircleOutlined onClick={() => remove(name)} />
+                  </Col>
+                </Row>
+              ))}
+              <Form.Item>
+                <Button disabled={props.disabled} type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+                  Add tag
+                </Button>
+              </Form.Item>
+            </>
+          )}
+        </Form.List>
+      ),
+    },
+    {
+      key: "9",
+      label: "Measurements",
+      children: (
+        <>
+          <Card variant="borderless">
             <p>
               ChirpStack can aggregate and visualize decoded device measurements in the device dashboard. To setup the
               aggregation of device measurements, you must configure the key, kind of measurement and name
@@ -1206,12 +1147,11 @@ function DeviceProfileForm(props: IProps) {
             {(fields, { add, remove }) => (
               <>
                 {fields.map(({ key, name, ...restField }) => (
-                  <Row gutter={24}>
+                  <Row gutter={24} key={key}>
                     <Col span={6}>
                       <Form.Item
                         {...restField}
                         name={[name, 0]}
-                        fieldKey={[name, 0]}
                         rules={[{ required: true, message: "Please enter a key!" }]}
                       >
                         <Input placeholder="Measurement key" disabled={props.disabled} />
@@ -1221,20 +1161,23 @@ function DeviceProfileForm(props: IProps) {
                       <Form.Item
                         {...restField}
                         name={[name, 1, "kind"]}
-                        fieldKey={[name, 1, "kind"]}
                         rules={[{ required: true, message: "Please select a kind!" }]}
                       >
-                        <Select disabled={props.disabled} placeholder="Measurement kind">
-                          <Select.Option value={MeasurementKind.UNKNOWN}>Unknown / unset</Select.Option>
-                          <Select.Option value={MeasurementKind.COUNTER}>Counter</Select.Option>
-                          <Select.Option value={MeasurementKind.ABSOLUTE}>Absolute</Select.Option>
-                          <Select.Option value={MeasurementKind.GAUGE}>Gauge</Select.Option>
-                          <Select.Option value={MeasurementKind.STRING}>String</Select.Option>
-                        </Select>
+                        <Select
+                          disabled={props.disabled}
+                          placeholder="Measurement kind"
+                          options={[
+                            { value: MeasurementKind.UNKNOWN, label: "Unknown / unset" },
+                            { value: MeasurementKind.COUNTER, label: "Counter" },
+                            { value: MeasurementKind.ABSOLUTE, label: "Absolute" },
+                            { value: MeasurementKind.GAUGE, label: "Gauge" },
+                            { value: MeasurementKind.STRING, label: "String" },
+                          ]}
+                        />
                       </Form.Item>
                     </Col>
                     <Col span={10}>
-                      <Form.Item {...restField} name={[name, 1, "name"]} fieldKey={[name, 1, "name"]}>
+                      <Form.Item {...restField} name={[name, 1, "name"]}>
                         <Input placeholder="Measurement name" disabled={props.disabled} />
                       </Form.Item>
                     </Col>
@@ -1251,8 +1194,20 @@ function DeviceProfileForm(props: IProps) {
               </>
             )}
           </Form.List>
-        </Tabs.TabPane>
-      </Tabs>
+        </>
+      ),
+    },
+  ];
+
+  return (
+    <Form
+      layout="vertical"
+      initialValues={props.initialValues.toObject()}
+      onFinish={onFinish}
+      onFinishFailed={onFinishFailed}
+      form={form}
+    >
+      <Tabs activeKey={tabActive} onChange={onTabChange} items={tabItems} />
       <Form.Item>
         <Button type="primary" htmlType="submit" disabled={props.disabled}>
           Submit

@@ -1,5 +1,7 @@
+use std::str::FromStr;
+
 use anyhow::{Context, Result};
-use rand::Rng;
+use rand::RngExt;
 use tracing::{Instrument, Level, span, trace};
 
 use super::helpers;
@@ -7,6 +9,7 @@ use crate::backend::roaming;
 use crate::storage::downlink_frame;
 use crate::{gateway, region};
 use chirpstack_api::{gw, internal};
+use lrwn::region::CommonName;
 
 pub struct Data {
     region_config_id: String,
@@ -42,11 +45,13 @@ impl Data {
             return Err(anyhow!("DLMetaData is not set"));
         }
 
-        let region_config_id = uplink_rx_info[0]
+        let rf_region = uplink_rx_info[0]
             .metadata
-            .get("region_config_id")
+            .get("rf_region")
             .cloned()
             .unwrap_or_default();
+        let region_common_name = CommonName::from_str(&rf_region)?;
+        let region_config_id = region::get_region_config_id(region_common_name)?;
 
         let mut ctx = Data {
             region_config_id,
@@ -101,7 +106,8 @@ impl Data {
 
             tx_info.power = region_conf.get_downlink_tx_power_eirp(tx_info.frequency) as i32;
 
-            let rx1_dr = region_conf.get_data_rate(self.dl_meta_data.data_rate_1.unwrap())?;
+            let rx1_dr =
+                region_conf.get_data_rate(false, self.dl_meta_data.data_rate_1.unwrap())?;
             helpers::set_tx_info_data_rate(&mut tx_info, &rx1_dr)?;
 
             self.downlink_frame.items.push(gw::DownlinkFrameItem {
@@ -133,7 +139,8 @@ impl Data {
 
             tx_info.power = region_conf.get_downlink_tx_power_eirp(tx_info.frequency) as i32;
 
-            let rx2_dr = region_conf.get_data_rate(self.dl_meta_data.data_rate_2.unwrap())?;
+            let rx2_dr =
+                region_conf.get_data_rate(false, self.dl_meta_data.data_rate_2.unwrap())?;
             helpers::set_tx_info_data_rate(&mut tx_info, &rx2_dr)?;
 
             self.downlink_frame.items.push(gw::DownlinkFrameItem {

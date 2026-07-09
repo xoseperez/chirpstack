@@ -4,7 +4,6 @@ import { Link } from "react-router-dom";
 import { DeleteOutlined } from "@ant-design/icons";
 import { Space, Breadcrumb, Button } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { PageHeader } from "@ant-design/pro-layout";
 
 import type { ListApiKeysResponse, ApiKey } from "@chirpstack/chirpstack-api-grpc-web/api/internal_pb";
 import { ListApiKeysRequest, DeleteApiKeyRequest } from "@chirpstack/chirpstack-api-grpc-web/api/internal_pb";
@@ -14,6 +13,7 @@ import DataTable from "../../components/DataTable";
 import InternalStore from "../../stores/InternalStore";
 import DeleteConfirm from "../../components/DeleteConfirm";
 import { useTitle } from "../helpers";
+import PageHeader from "../../components/PageHeader";
 
 function ListAdminApiKeys() {
   useTitle("Network Server", "API keys");
@@ -30,6 +30,19 @@ function ListAdminApiKeys() {
       title: "Name",
       dataIndex: "name",
       key: "name",
+    },
+    {
+      title: "Read only",
+      dataIndex: "isReadOnly",
+      key: "isReadOnly",
+      width: 150,
+      render: (_, record) => {
+        if (record.isReadOnly) {
+          return "yes";
+        } else {
+          return "no";
+        }
+      },
     },
     {
       title: "Action",
@@ -76,21 +89,12 @@ function ListAdminApiKeys() {
   };
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size="large">
+    <Space orientation="vertical" style={{ width: "100%" }} size="large">
       <PageHeader
-        breadcrumbRender={() => (
-          <Breadcrumb>
-            <Breadcrumb.Item>
-              <span>Network Server</span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>API keys</span>
-            </Breadcrumb.Item>
-          </Breadcrumb>
-        )}
+        breadcrumbRender={() => <Breadcrumb items={[{ title: "Network Server" }, { title: "API Keys" }]} />}
         title="API keys"
         extra={[
-          <Button type="primary">
+          <Button type="primary" key="add-api-key">
             <Link to="/api-keys/create">Add API key</Link>
           </Button>,
         ]}

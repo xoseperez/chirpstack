@@ -19,7 +19,7 @@ impl Configuration {
                 supports_user_channels: true,
                 cf_list_min_dr: 0,
                 cf_list_max_dr: 5,
-                data_rates: [
+                data_rates: vec![
                     (
                         0,
                         DataRate {
@@ -112,11 +112,8 @@ impl Configuration {
                             modulation: DataRateModulation::Fsk(FskDataRate { bitrate: 50000 }),
                         },
                     ),
-                ]
-                .iter()
-                .cloned()
-                .collect(),
-                max_payload_size_per_dr: match repeater_compatible {
+                ],
+                max_dl_payload_size_per_dr: match repeater_compatible {
                     true => [
                         (
                             MacVersion::LORAWAN_1_0_0,
@@ -372,22 +369,19 @@ impl Configuration {
                 uplink_channels: vec![
                     Channel {
                         frequency: 779500000,
-                        min_dr: 0,
-                        max_dr: 5,
+                        data_rates: vec![0, 1, 2, 3, 4, 5],
                         enabled: true,
                         user_defined: false,
                     },
                     Channel {
                         frequency: 779700000,
-                        min_dr: 0,
-                        max_dr: 5,
+                        data_rates: vec![0, 1, 2, 3, 4, 5],
                         enabled: true,
                         user_defined: false,
                     },
                     Channel {
                         frequency: 779900000,
-                        min_dr: 0,
-                        max_dr: 5,
+                        data_rates: vec![0, 1, 2, 3, 4, 5],
                         enabled: true,
                         user_defined: false,
                     },
@@ -395,22 +389,19 @@ impl Configuration {
                 downlink_channels: vec![
                     Channel {
                         frequency: 779500000,
-                        min_dr: 0,
-                        max_dr: 5,
+                        data_rates: vec![0, 1, 2, 3, 4, 5],
                         enabled: true,
                         user_defined: false,
                     },
                     Channel {
                         frequency: 779700000,
-                        min_dr: 0,
-                        max_dr: 5,
+                        data_rates: vec![0, 1, 2, 3, 4, 5],
                         enabled: true,
                         user_defined: false,
                     },
                     Channel {
                         frequency: 779900000,
-                        min_dr: 0,
-                        max_dr: 5,
+                        data_rates: vec![0, 1, 2, 3, 4, 5],
                         enabled: true,
                         user_defined: false,
                     },
@@ -452,6 +443,8 @@ impl Region for Configuration {
             rx2_delay: Duration::from_secs(2),
             join_accept_delay1: Duration::from_secs(5),
             join_accept_delay2: Duration::from_secs(6),
+            min_ul_dr: 0,
+            max_ul_dr: 5,
         }
     }
 
@@ -463,18 +456,31 @@ impl Region for Configuration {
         self.base.get_data_rate_index(uplink, modulation)
     }
 
-    fn get_data_rate(&self, dr: u8) -> Result<DataRateModulation> {
-        self.base.get_data_rate(dr)
+    fn get_data_rate(&self, uplink: bool, dr_index: u8) -> Result<DataRateModulation> {
+        self.base.get_data_rate(uplink, dr_index)
     }
 
-    fn get_max_payload_size(
+    fn get_new_channel_req_dr_range(&self, data_rates: &[u8]) -> Result<(u8, u8)> {
+        self.base.get_new_channel_req_dr_range(data_rates)
+    }
+
+    fn get_data_rates_for_new_channel_req_dr_range(
+        &self,
+        min_dr: u8,
+        max_dr: u8,
+    ) -> Result<Vec<u8>> {
+        self.base
+            .get_data_rates_for_new_channel_req_dr_range(min_dr, max_dr)
+    }
+
+    fn get_max_dl_payload_size(
         &self,
         mac_version: MacVersion,
         reg_params_revision: Revision,
         dr: u8,
     ) -> Result<MaxPayloadSize> {
         self.base
-            .get_max_payload_size(mac_version, reg_params_revision, dr)
+            .get_max_dl_payload_size(mac_version, reg_params_revision, dr)
     }
 
     fn get_rx1_data_rate_index(&self, uplink_dr: u8, rx1_dr_offset: usize) -> Result<u8> {
@@ -485,8 +491,8 @@ impl Region for Configuration {
         self.base.get_tx_power_offset(tx_power)
     }
 
-    fn add_channel(&mut self, frequency: u32, min_dr: u8, max_dr: u8) -> Result<()> {
-        self.base.add_channel(frequency, min_dr, max_dr)
+    fn add_channel(&mut self, frequency: u32, data_rates: Vec<u8>) -> Result<()> {
+        self.base.add_channel(frequency, data_rates)
     }
 
     fn get_uplink_channel(&self, channel: usize) -> Result<Channel> {

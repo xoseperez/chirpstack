@@ -7,7 +7,7 @@ PROTOC_ARGS := -I=../proto --js_out=import_style=commonjs:. --grpc-web_out=impor
 all: requirements common gw api integration google-api
 
 requirements:
-	yarn install
+	pnpm install
 
 common:
 	mkdir -p common
@@ -24,7 +24,6 @@ api:
 	$(PROTOC_PATH) $(PROTOC_ARGS) ../proto/api/tenant.proto
 	$(PROTOC_PATH) $(PROTOC_ARGS) ../proto/api/application.proto
 	$(PROTOC_PATH) $(PROTOC_ARGS) ../proto/api/device_profile.proto
-	$(PROTOC_PATH) $(PROTOC_ARGS) ../proto/api/device_profile_template.proto
 	$(PROTOC_PATH) $(PROTOC_ARGS) ../proto/api/device.proto
 	$(PROTOC_PATH) $(PROTOC_ARGS) ../proto/api/gateway.proto
 	$(PROTOC_PATH) $(PROTOC_ARGS) ../proto/api/multicast_group.proto

@@ -2,7 +2,6 @@ import { Link } from "react-router-dom";
 
 import { Space, Breadcrumb, Button } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { PageHeader } from "@ant-design/pro-layout";
 
 import type {
   ListDeviceProfilesResponse,
@@ -18,6 +17,7 @@ import DataTable from "../../components/DataTable";
 import DeviceProfileStore from "../../stores/DeviceProfileStore";
 import Admin from "../../components/Admin";
 import { useTitle } from "../helpers";
+import PageHeader from "../../components/PageHeader";
 
 interface IProps {
   tenant: Tenant;
@@ -112,6 +112,7 @@ function ListDeviceProfiles(props: IProps) {
   ) => {
     const req = new ListDeviceProfilesRequest();
     req.setTenantId(props.tenant.getId());
+    req.setTenantOnly(true);
     req.setLimit(limit);
     req.setOffset(offset);
 
@@ -122,26 +123,20 @@ function ListDeviceProfiles(props: IProps) {
   };
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size="large">
+    <Space orientation="vertical" style={{ width: "100%" }} size="large">
       <PageHeader
         breadcrumbRender={() => (
-          <Breadcrumb>
-            <Breadcrumb.Item>
-              <span>Tenants</span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${props.tenant.getId()}`}>{props.tenant.getName()}</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>Device profiles</span>
-            </Breadcrumb.Item>
-          </Breadcrumb>
+          <Breadcrumb
+            items={[
+              { title: "Tenants" },
+              { title: <Link to={`/tenants/${props.tenant.getId()}`}>{props.tenant.getName()}</Link> },
+              { title: "Device profiles" },
+            ]}
+          />
         )}
         title="Device profiles"
         extra={[
-          <Admin tenantId={props.tenant.getId()} isDeviceAdmin>
+          <Admin tenantId={props.tenant.getId()} isDeviceAdmin key="add-device-profile">
             <Button type="primary">
               <Link to={`/tenants/${props.tenant.getId()}/device-profiles/create`}>Add device profile</Link>
             </Button>

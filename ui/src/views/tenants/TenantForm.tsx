@@ -1,4 +1,5 @@
-import { Form, Input, InputNumber, Switch, Row, Col, Button, Tabs } from "antd";
+import { Card, Form, Input, InputNumber, Switch, Row, Col, Button, Tabs, Space } from "antd";
+import type { TabsProps } from "antd/lib";
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 
 import { Tenant } from "@chirpstack/chirpstack-api-grpc-web/api/tenant_pb";
@@ -30,18 +31,20 @@ function TenantForm(props: IProps) {
       tenant.getTagsMap().set(elm[0], elm[1]);
     }
 
+    // DevAddr prefixes
+    for (const prefix of v.devAddrPrefixesList) {
+      tenant.addDevAddrPrefixes(prefix);
+    }
+
     props.onFinish(tenant);
   };
 
-  return (
-    <Form
-      layout="vertical"
-      initialValues={props.initialValues.toObject()}
-      onFinish={onFinish}
-      onFinishFailed={onFinishFailed}
-    >
-      <Tabs>
-        <Tabs.TabPane tab="General" key="1">
+  const tabItems: TabsProps["items"] = [
+    {
+      key: "1",
+      label: "General",
+      children: (
+        <>
           <Form.Item label="Name" name="name" rules={[{ required: true, message: "Please enter a name!" }]}>
             <Input disabled={props.disabled} />
           </Form.Item>
@@ -101,36 +104,96 @@ function TenantForm(props: IProps) {
               </Form.Item>
             </Col>
           </Row>
-        </Tabs.TabPane>
-        <Tabs.TabPane tab="Tags" key="2">
-          <Form.List name="tagsMap">
+        </>
+      ),
+    },
+    {
+      key: "2",
+      label: "Tags",
+      children: (
+        <Form.List name="tagsMap">
+          {(fields, { add, remove }) => (
+            <>
+              {fields.map(({ key, name, ...restField }) => (
+                <Row gutter={24} key={key}>
+                  <Col span={6}>
+                    <Form.Item
+                      {...restField}
+                      name={[name, 0]}
+                      rules={[{ required: true, message: "Please enter a key!" }]}
+                    >
+                      <Input placeholder="Key" disabled={props.disabled} />
+                    </Form.Item>
+                  </Col>
+                  <Col span={16}>
+                    <Form.Item
+                      {...restField}
+                      name={[name, 1]}
+                      rules={[{ required: true, message: "Please enter a value!" }]}
+                    >
+                      <Input placeholder="Value" disabled={props.disabled} />
+                    </Form.Item>
+                  </Col>
+                  {!props.disabled && (
+                    <Col span={2}>
+                      <MinusCircleOutlined onClick={() => remove(name)} />
+                    </Col>
+                  )}
+                </Row>
+              ))}
+              {!props.disabled && (
+                <Form.Item>
+                  <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+                    Add tag
+                  </Button>
+                </Form.Item>
+              )}
+            </>
+          )}
+        </Form.List>
+      ),
+    },
+    {
+      key: "3",
+      label: "DevAddr prefixes",
+      children: (
+        <Space orientation="vertical" size="large">
+          <Card variant="borderless">
+            <p>
+              By assigning one or multiple DevAddr prefixes to a tenant, it is possilbe to let the tenant use only a
+              sub-set of the available DevAddr pool in the network. Please note that this is optional and if not
+              configured, ChirpStack will use the network available DevAddr pool. Configured DevAddr prefixes must be a
+              sub-set of the network available DevAddr pool.
+            </p>
+          </Card>
+          <Form.List name="devAddrPrefixesList">
             {(fields, { add, remove }) => (
               <>
-                {fields.map(({ key, name, ...restField }) => (
+                {fields.map((field, _index) => (
                   <Row gutter={24}>
-                    <Col span={6}>
+                    <Col span={22}>
                       <Form.Item
-                        {...restField}
-                        name={[name, 0]}
-                        fieldKey={[name, 0]}
-                        rules={[{ required: true, message: "Please enter a key!" }]}
+                        {...field}
+                        rules={[
+                          {
+                            required: true,
+                            message: "Please enter a valid DevAddr prefix",
+
+                            pattern: new RegExp(/^[A-Fa-f0-9]{8}\/\d{1,2}$/),
+                          },
+                        ]}
                       >
-                        <Input placeholder="Key" disabled={props.disabled} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={16}>
-                      <Form.Item
-                        {...restField}
-                        name={[name, 1]}
-                        fieldKey={[name, 1]}
-                        rules={[{ required: true, message: "Please enter a value!" }]}
-                      >
-                        <Input placeholder="Value" disabled={props.disabled} />
+                        <Input
+                          className="input-code"
+                          maxLength={11}
+                          placeholder="00000000/0"
+                          disabled={props.disabled}
+                        />
                       </Form.Item>
                     </Col>
                     {!props.disabled && (
                       <Col span={2}>
-                        <MinusCircleOutlined onClick={() => remove(name)} />
+                        <MinusCircleOutlined onClick={() => remove(field.name)} />
                       </Col>
                     )}
                   </Row>
@@ -138,15 +201,26 @@ function TenantForm(props: IProps) {
                 {!props.disabled && (
                   <Form.Item>
                     <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
-                      Add tag
+                      Add DevAddr prefix
                     </Button>
                   </Form.Item>
                 )}
               </>
             )}
           </Form.List>
-        </Tabs.TabPane>
-      </Tabs>
+        </Space>
+      ),
+    },
+  ];
+
+  return (
+    <Form
+      layout="vertical"
+      initialValues={props.initialValues.toObject()}
+      onFinish={onFinish}
+      onFinishFailed={onFinishFailed}
+    >
+      <Tabs items={tabItems} />
       <Form.Item>
         <Button type="primary" htmlType="submit" disabled={props.disabled}>
           Submit

@@ -1,7 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 
 import { Space, Breadcrumb, Card } from "antd";
-import { PageHeader } from "@ant-design/pro-layout";
 
 import type { Tenant } from "@chirpstack/chirpstack-api-grpc-web/api/tenant_pb";
 import { TenantUser, AddTenantUserRequest } from "@chirpstack/chirpstack-api-grpc-web/api/tenant_pb";
@@ -9,6 +8,7 @@ import { TenantUser, AddTenantUserRequest } from "@chirpstack/chirpstack-api-grp
 import TenantUserForm from "./TenantUserForm";
 import TenantStore from "../../stores/TenantStore";
 import { useTitle } from "../helpers";
+import PageHeader from "../../components/PageHeader";
 
 function CreateTenantUser({ tenant }: { tenant: Tenant }) {
   const navigate = useNavigate();
@@ -28,27 +28,19 @@ function CreateTenantUser({ tenant }: { tenant: Tenant }) {
   const tu = new TenantUser();
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }} size="large">
+    <Space orientation="vertical" style={{ width: "100%" }} size="large">
       <PageHeader
         breadcrumbRender={() => (
-          <Breadcrumb>
-            <Breadcrumb.Item>
-              <span>Tenants</span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${tenant.getId()}`}>{tenant.getName()}</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>
-                <Link to={`/tenants/${tenant.getId()}/users`}>Tenant users</Link>
-              </span>
-            </Breadcrumb.Item>
-            <Breadcrumb.Item>
-              <span>Add</span>
-            </Breadcrumb.Item>
-          </Breadcrumb>
+          <Breadcrumb
+            items={[
+              { title: "Tenants" },
+              { title: <Link to={`/tenants/${tenant.getId()}`}>{tenant.getName()}</Link> },
+              {
+                title: <Link to={`/tenants/${tenant.getId()}/users`}>Tenant users</Link>,
+              },
+              { title: "Add" },
+            ]}
+          />
         )}
         title="Add tenant user"
       />

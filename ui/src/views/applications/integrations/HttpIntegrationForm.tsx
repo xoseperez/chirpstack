@@ -39,10 +39,12 @@ function HttpIntegrationForm(props: IProps) {
         name="encoding"
         rules={[{ required: true, message: "Please select an encoding!" }]}
       >
-        <Select>
-          <Select.Option value={Encoding.JSON}>JSON</Select.Option>
-          <Select.Option value={Encoding.PROTOBUF}>Protobuf (binary)</Select.Option>
-        </Select>
+        <Select
+          options={[
+            { value: Encoding.JSON, label: "JSON" },
+            { value: Encoding.PROTOBUF, label: "Protobuf (binary)" },
+          ]}
+        />
       </Form.Item>
       <Form.Item
         label="Event endpoint URL(s)"
@@ -52,7 +54,7 @@ function HttpIntegrationForm(props: IProps) {
       >
         <Input />
       </Form.Item>
-      <Space direction="vertical" style={{ width: "100%" }}>
+      <Space orientation="vertical" style={{ width: "100%" }}>
         <Typography.Text>Headers</Typography.Text>
         <Form.List name="headersMap">
           {(fields, { add, remove }) => (
@@ -63,7 +65,6 @@ function HttpIntegrationForm(props: IProps) {
                     <Form.Item
                       {...restField}
                       name={[name, 0]}
-                      fieldKey={[name, 0]}
                       rules={[{ required: true, message: "Please enter a key!" }]}
                     >
                       <Input placeholder="Key" />
@@ -73,7 +74,6 @@ function HttpIntegrationForm(props: IProps) {
                     <Form.Item
                       {...restField}
                       name={[name, 1]}
-                      fieldKey={[name, 1]}
                       rules={[{ required: true, message: "Please enter a value!" }]}
                     >
                       <Input placeholder="Value" />
