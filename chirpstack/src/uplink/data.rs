@@ -104,14 +104,19 @@ impl Data {
         };
 
         if roaming::check_local_session_first() {
-            match ctx.get_device_for_phy_payload().await {
-                Ok(_) => {}
-                Err(e) => {
-                    trace!("Trying roaming now");
+            if let Err(e) = ctx.get_device_for_phy_payload().await {
+                // Only a missing device-session or a MIC mismatch (both reported as Abort)
+                // mean the uplink may belong to another network. Any other error, such as a
+                // storage failure or losing the frame-counter race against a concurrent
+                // handler of the same uplink, must surface as-is: falling back to roaming
+                // would forward a local device's uplink to the roaming partner and hide
+                // the error.
+                if matches!(e, Error::Abort) {
+                    trace!("No local device-session matched, checking for passive-roaming");
                     ctx.handle_passive_roaming_device().await?;
-                    return Err(anyhow::Error::new(e).context("Get device-session"));
                 }
-            };
+                return Err(e.into());
+            }
         } else {
             ctx.handle_passive_roaming_device().await?;
             ctx.get_device_for_phy_payload().await?;
