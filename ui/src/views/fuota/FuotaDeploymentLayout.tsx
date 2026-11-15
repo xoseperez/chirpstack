@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Route, Routes, useNavigate, useParams, useLocation, Link } from "react-router-dom";
+import { Route, Routes, useNavigate, useParams, useLocation, Link } from "react-router";
 
 import { format } from "date-fns";
 import { Space, Breadcrumb, Card, Button, Menu, Popconfirm, Descriptions, DescriptionsProps } from "antd";
@@ -152,7 +152,12 @@ function FuotaDeploymentLayout(props: IProps) {
         title={d.getName()}
         subTitle={`FUOTA deployment id: ${d.getId()}`}
         extra={[
-          <Admin tenantId={tenant.getId()} isDeviceAdmin key="start-delete-fuota-deployment">
+          <Admin
+            tenantId={tenant.getId()}
+            applicationId={props.application.getId()}
+            isApplicationAdmin
+            key="start-delete-fuota-deployment"
+          >
             <Space orientation="horizontal" style={{ float: "right" }}>
               <Popconfirm
                 placement="left"
@@ -231,9 +236,20 @@ function FuotaDeploymentLayout(props: IProps) {
           />
           <Route
             path="/devices"
-            element={<FuotaDeploymentDevices getFuotaDeploymentResponse={getFuotaDeploymentResponse} />}
+            element={
+              <FuotaDeploymentDevices
+                getFuotaDeploymentResponse={getFuotaDeploymentResponse}
+                tenant={props.tenant}
+                application={props.application}
+              />
+            }
           />
-          <Route path="/gateways" element={<FuotaDeploymentGateways fuotaDeployment={d} />} />
+          <Route
+            path="/gateways"
+            element={
+              <FuotaDeploymentGateways fuotaDeployment={d} tenant={props.tenant} application={props.application} />
+            }
+          />
         </Routes>
       </Card>
     </Space>

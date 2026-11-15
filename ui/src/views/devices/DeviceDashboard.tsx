@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 
 import { format, sub } from "date-fns";
 import { ReloadOutlined } from "@ant-design/icons";

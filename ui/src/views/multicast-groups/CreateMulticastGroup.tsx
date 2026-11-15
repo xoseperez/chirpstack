@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 
 import { Space, Breadcrumb, Card } from "antd";
 
@@ -61,7 +61,7 @@ function CreateMulticastGroup(props: IProps) {
         title="Add multicast-group"
       />
       <Card>
-        <MulticastGroupForm initialValues={multicastGroup} onFinish={onFinish} />
+        <MulticastGroupForm initialValues={multicastGroup} tenant={props.tenant} onFinish={onFinish} />
       </Card>
     </Space>
   );

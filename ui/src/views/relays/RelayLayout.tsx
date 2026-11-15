@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Route, Routes, useParams, Link } from "react-router-dom";
+import { Route, Routes, useParams, Link } from "react-router";
 
 import { Space, Breadcrumb, Card, Menu } from "antd";
 
@@ -84,7 +84,10 @@ function RelayLayout(props: IProps) {
           ]}
         />
         <Routes>
-          <Route path="/" element={<ListRelayDevices relayDevice={rd} />} />
+          <Route
+            path="/"
+            element={<ListRelayDevices relayDevice={rd} tenant={props.tenant} application={props.application} />}
+          />
         </Routes>
       </Card>
     </Space>

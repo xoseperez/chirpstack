@@ -116,12 +116,9 @@ pub fn handle(
 
         info!(dev_eui = %dev_eui, tx_power_index = ds.tx_power_index, dr = ds.dr, nb_trans = ds.nb_trans, enabled_channels = ?ds.enabled_uplink_channel_indices, "LinkADRReq acknowledged (device has ADR disabled)");
     } else {
-        // increase the error counter
-        let count = ds
-            .mac_command_error_count
-            .entry(lrwn::CID::LinkADRReq.to_u8() as u32)
-            .or_insert(0);
-        *count += 1;
+        // In some cases, we are able to (potentially) recover, e.g. by learning the min / max
+        // supported TX Power index, as not all devices might support up to the max. value.
+        let mut is_recoverable_error = false;
 
         // TODO: remove workaround once all RN2483 nodes have the issue below
         // fixed.
@@ -134,14 +131,25 @@ pub fn handle(
         if !tx_power_ack && link_adr_req.tx_power == 0 {
             ds.tx_power_index = 1;
             ds.min_supported_tx_power_index = 1;
+            is_recoverable_error = true;
         }
 
         // It is possible that the node does not support all TXPower
         // indices. In this case we set the MaxSupportedTXPowerIndex
         // to the request - 1. If that index is not supported, it will
         // be lowered by 1 at the next nACK.
-        if !tx_power_ack && link_adr_req.tx_power > 0 {
+        if !tx_power_ack && link_adr_req.tx_power > ds.min_supported_tx_power_index as u8 {
             ds.max_supported_tx_power_index = (link_adr_req.tx_power - 1) as u32;
+            is_recoverable_error = true;
+        }
+
+        // only increase error count when it is not recoverable
+        if !is_recoverable_error {
+            let count = ds
+                .mac_command_error_count
+                .entry(lrwn::CID::LinkADRReq.to_u8() as u32)
+                .or_insert(0);
+            *count += 1;
         }
 
         warn!(dev_eui = %dev.dev_eui, ch_mask_ack = ch_mask_ack, dr_ack = dr_ack, tx_power_ack = tx_power_ack, "LinkADRReq not acknowledged");
@@ -239,10 +247,6 @@ pub mod test {
                 adr: true,
                 enabled_uplink_channel_indices: vec![0, 1],
                 max_supported_tx_power_index: 2,
-                mac_command_error_count: [(lrwn::CID::LinkADRReq.to_u8() as u32, 1)]
-                    .iter()
-                    .cloned()
-                    .collect(),
                 ..Default::default()
             },
             expected_error: None,
@@ -272,10 +276,39 @@ pub mod test {
                 enabled_uplink_channel_indices: vec![0, 1],
                 tx_power_index: 1,
                 min_supported_tx_power_index: 1,
-                mac_command_error_count: [(lrwn::CID::LinkADRReq.to_u8() as u32, 1)]
-                    .iter()
-                    .cloned()
-                    .collect(),
+                ..Default::default()
+            },
+            expected_error: None,
+        },
+        Test {
+            name: "pending request and negative tx-power ack on tx-power 1 with min_supported_tx_power_index=1 sets error".into(),
+            device_session: internal::DeviceSession{
+                adr: true,
+                enabled_uplink_channel_indices: vec![0, 1],
+                min_supported_tx_power_index: 1,
+                ..Default::default()
+            },
+            link_adr_req: Some(lrwn::LinkADRReqPayload {
+                dr: 5,
+                tx_power: 1,
+                ch_mask: lrwn::ChMask::from_slice(&[true, true, true]).unwrap(),
+                redundancy: lrwn::Redundancy {
+                    ch_mask_cntl: 0,
+                    nb_rep: 2,
+                },
+            }),
+            link_adr_ans: lrwn::LinkADRAnsPayload {
+                ch_mask_ack: true,
+                dr_ack: true,
+                tx_power_ack: false,
+            },
+            expected_device_session: internal::DeviceSession {
+                adr: true,
+                enabled_uplink_channel_indices: vec![0, 1],
+                min_supported_tx_power_index: 1,
+                mac_command_error_count: [
+                    (lrwn::CID::LinkADRReq.to_u8() as u32, 1)
+                ].iter().cloned().collect(),
                 ..Default::default()
             },
             expected_error: None,

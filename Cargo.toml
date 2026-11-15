@@ -10,7 +10,7 @@
   ]
 
   [workspace.package]
-    version = "4.19.0"
+    version = "4.20.0"
     homepage = "https://www.chirpstack.io"
     license = "MIT"
     authors = ["Orne Brocaar <info@brocaar.com>"]
@@ -20,7 +20,7 @@
   [workspace.dependencies]
     # Encoding
     hex = "0.4"
-    base64 = "0.22"
+    base64 = "0.23"
     serde = { version = "1.0", features = ["derive"] }
     serde_json = "1.0"
     serde_yaml = "0.9"
@@ -44,7 +44,7 @@
     hmac = "0.13"
     sha2 = "0.11"
     pbkdf2 = { version = "0.13", features = ["phc", "getrandom"] }
-    jsonwebtoken = { version = "10.4", features = ["rust_crypto"] }
+    jsonwebtoken = { version = "11.0", features = ["rust_crypto"] }
     rustls = { version = "0.23", default-features = false, features = [
       "logging",
       "std",
@@ -53,10 +53,10 @@
     ] }
     rustls-native-certs = "0.8"
     rustls-pemfile = "2.2"
-    pem = "3.0"
+    pem = "4.0"
     x509-parser = "0.18"
     rsa = "0.9"
-    p256 = { version = "0.13" }
+    p256 = { version = "0.14" }
     rcgen = { version = "0.14", features = ["x509-parser"] }
     oauth2 = "5.0.0"
     openidconnect = { version = "4.0", features = [
@@ -73,7 +73,7 @@
     tokio-postgres = { version = "0.7" }
     tokio-postgres-rustls = { version = "0.14" }
     bigdecimal = "0.4"
-    redis = { version = "1.0", features = ["tls-rustls", "tokio-rustls-comp"] }
+    redis = { version = "1.7", features = ["tls-rustls", "tokio-rustls-comp"] }
     deadpool-redis = { version = "0.23", features = ["cluster", "serde"] }
 
     # Error
@@ -94,21 +94,21 @@
     axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }
     tower = { version = "0.5", features = ["util"] }
     tower-http = { version = "0.7", features = ["trace", "auth"] }
-    http = "1.4"
+    http = "1.5"
     http-body = "1.0"
 
     # Date & time
     chrono = { version = "0.4", features = ["serde"] }
 
     # Async
-    tokio = { version = "1.52", features = ["macros"] }
+    tokio = { version = "1.53", features = ["macros"] }
     tokio-executor-trait = "3.1"
     tokio-reactor-trait = "4.1"
     tokio-stream = "0.1"
     futures = "0.3"
     futures-util = "0.3"
     async-trait = "0.1"
-    async-recursion = "1.1"
+    async-recursion = "1.2"
 
     # Testing
     httpmock = "0.8"
@@ -133,19 +133,19 @@
     handlebars = "6.4"
 
     # Utilities
-    validator = { version = "0.20", features = ["derive"] }
+    validator = { version = "0.21", features = ["derive"] }
     aws-sign-v4 = "0.3"
     gcp_auth = "0.12"
     rust-embed = "8.11"
     mime_guess = "2.0"
-    rquickjs = { version = "0.12", features = [
+    rquickjs = { version = "0.14", features = [
       "bindgen",
       "loader",
       "array-buffer",
       "chrono",
     ] }
-    uuid = { version = "1.23", features = ["v4", "serde"] }
-    regex = "1.12"
+    uuid = { version = "1.27", features = ["v4", "serde"] }
+    regex = "1.13"
     petgraph = "0.8"
     pin-project = "1.1"
     signal-hook = "0.4"
@@ -155,7 +155,7 @@
     dotenv = "0.15"
 
     # Integrations
-    lapin = { version = "4.10", default-features = false, features = [
+    lapin = { version = "4.12", default-features = false, features = [
       "tokio",
       "rustls--ring",
       "rustls-native-certs",

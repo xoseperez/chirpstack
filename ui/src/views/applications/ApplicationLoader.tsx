@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Route, Routes, useParams } from "react-router-dom";
+import { Route, Routes, useParams } from "react-router";
 
 import type { Tenant } from "@chirpstack/chirpstack-api-grpc-web/api/tenant_pb";
 import type { Application, GetApplicationResponse } from "@chirpstack/chirpstack-api-grpc-web/api/application_pb";

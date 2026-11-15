@@ -12,7 +12,7 @@ use crate::config;
 use crate::storage::error::Error;
 use crate::storage::schema::{
     application, device, fuota_deployment, fuota_deployment_device, fuota_deployment_gateway,
-    fuota_deployment_job, gateway, tenant,
+    fuota_deployment_job, gateway, tenant, tenant_user, tenant_user_application, user,
 };
 use crate::storage::{self, device_profile, fields, get_async_db_conn};
 use lrwn::{AES128Key, DevAddr, EUI64};
@@ -196,6 +196,10 @@ pub async fn create_deployment(d: FuotaDeployment) -> Result<FuotaDeployment, Er
         }
     }
 
+    if d.payload.is_empty() {
+        return Err(Error::Validation("Payload must be non-empty".into()));
+    }
+
     let d: FuotaDeployment = diesel::insert_into(fuota_deployment::table)
         .values(&d)
         .get_result(&mut get_async_db_conn().await?)
@@ -266,6 +270,7 @@ pub async fn delete_deployment(id: Uuid) -> Result<(), Error> {
 }
 
 pub async fn get_deployment_count(
+    user_id: Option<Uuid>,
     tenant_id: Option<Uuid>,
     application_id: Option<Uuid>,
 ) -> Result<i64, Error> {
@@ -273,6 +278,41 @@ pub async fn get_deployment_count(
         .inner_join(application::table)
         .select(dsl::count_star())
         .into_boxed();
+
+    // filter by user permissions
+    if let Some(user_id) = user_id {
+        q = q.filter(dsl::exists(
+            user::table
+                .filter(
+                    user::id
+                        .eq(fields::Uuid::from(user_id))
+                        .and(user::is_active.eq(true)),
+                )
+                .filter(
+                    user::is_admin.eq(true).or(dsl::exists(
+                        tenant_user::table
+                            .filter(
+                                tenant_user::user_id
+                                    .eq(user::id)
+                                    .and(tenant_user::tenant_id.eq(application::id)),
+                            )
+                            .filter(
+                                tenant_user::is_admin
+                                    .eq(true)
+                                    .or(tenant_user::is_device_admin.eq(true))
+                                    .or(dsl::exists(
+                                        tenant_user_application::table.filter(
+                                            tenant_user_application::user_id.eq(user::id).and(
+                                                tenant_user_application::application_id
+                                                    .eq(application::id),
+                                            ),
+                                        ),
+                                    )),
+                            ),
+                    )),
+                ),
+        ));
+    }
 
     if let Some(tenant_id) = tenant_id {
         q = q.filter(application::tenant_id.eq(fields::Uuid::from(tenant_id)));
@@ -288,6 +328,7 @@ pub async fn get_deployment_count(
 }
 
 pub async fn list_deployments(
+    user_id: Option<Uuid>,
     tenant_id: Option<Uuid>,
     application_id: Option<Uuid>,
     limit: i64,
@@ -306,6 +347,41 @@ pub async fn list_deployments(
             application::name,
         ))
         .into_boxed();
+
+    // filter by user permissions
+    if let Some(user_id) = user_id {
+        q = q.filter(dsl::exists(
+            user::table
+                .filter(
+                    user::id
+                        .eq(fields::Uuid::from(user_id))
+                        .and(user::is_active.eq(true)),
+                )
+                .filter(
+                    user::is_admin.eq(true).or(dsl::exists(
+                        tenant_user::table
+                            .filter(
+                                tenant_user::user_id
+                                    .eq(user::id)
+                                    .and(tenant_user::tenant_id.eq(application::tenant_id)),
+                            )
+                            .filter(
+                                tenant_user::is_admin
+                                    .eq(true)
+                                    .or(tenant_user::is_device_admin.eq(true))
+                                    .or(dsl::exists(
+                                        tenant_user_application::table.filter(
+                                            tenant_user_application::user_id.eq(user::id).and(
+                                                tenant_user_application::application_id
+                                                    .eq(application::id),
+                                            ),
+                                        ),
+                                    )),
+                            ),
+                    )),
+                ),
+        ));
+    }
 
     if let Some(tenant_id) = tenant_id {
         q = q.filter(application::tenant_id.eq(fields::Uuid::from(tenant_id)));
@@ -874,6 +950,7 @@ mod test {
             application_id: app.id,
             device_profile_id: dp.id,
             name: "test-fuota-deployment".into(),
+            payload: vec![1, 2, 3],
             ..Default::default()
         })
         .await
@@ -889,7 +966,7 @@ mod test {
         // count
         assert_eq!(
             1,
-            get_deployment_count(None, Some(app.id.into()))
+            get_deployment_count(None, None, Some(app.id.into()))
                 .await
                 .unwrap()
         );
@@ -906,7 +983,7 @@ mod test {
                 application_id: app.id,
                 application_name: app.name.clone(),
             }],
-            list_deployments(None, Some(app.id.into()), 10, 0)
+            list_deployments(None, None, Some(app.id.into()), 10, 0)
                 .await
                 .unwrap()
         );
@@ -921,7 +998,7 @@ mod test {
                 application_id: app.id,
                 application_name: app.name.clone(),
             }],
-            list_deployments(Some(app.tenant_id.into()), None, 10, 0)
+            list_deployments(None, Some(app.tenant_id.into()), None, 10, 0)
                 .await
                 .unwrap()
         );
@@ -1009,6 +1086,7 @@ mod test {
             application_id: app.id,
             device_profile_id: dp.id,
             name: "test-fuota-deployment".into(),
+            payload: vec![1, 2, 3],
             ..Default::default()
         })
         .await
@@ -1085,6 +1163,7 @@ mod test {
             application_id: app.id,
             device_profile_id: dp.id,
             name: "test-fuota-deployment".into(),
+            payload: vec![1, 2, 3],
             ..Default::default()
         })
         .await
@@ -1165,6 +1244,7 @@ mod test {
             application_id: app.id,
             device_profile_id: dp.id,
             name: "test-fuota-deployment".into(),
+            payload: vec![1, 2, 3],
             ..Default::default()
         })
         .await

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
-import { useParams } from "react-router-dom";
+import { Link } from "react-router";
+import { useParams } from "react-router";
 
 import { Space, Breadcrumb, Card, Row, Col, List, Typography } from "antd";
 import ReactMarkdown from "react-markdown";

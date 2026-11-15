@@ -181,6 +181,12 @@ pub fn run() {
   # ChirpStack will be allowed.
   allow_unknown_gateways={{ gateway.allow_unknown_gateways }}
 
+  # Unknown gateway downlink priority.
+  #
+  # This defines the downlink priority that will be assigned to unknown
+  # gateways.
+  unknown_gateway_downlink_priority={{ gateway.unknown_gateway_downlink_priority }}
+
   # RX timestamp max. drift.
   #
   # If the delta between the gateway reported RX timestamp vs ChirpStack
@@ -476,6 +482,15 @@ pub fn run() {
     # connects to an MQTT broker. By setting this flag you are indicating
     # that no messages saved by the broker for this client should be delivered.
     clean_session={{ integration.mqtt.clean_session }}
+
+    # Session expiry interval (MQTT 5+).
+    #
+    # This defines how long the broker keeps the session state after the client
+    # disconnects. Only applicable when the broker supports MQTT 5 or higher.
+    # Leave unset or set to 0 to expire immediately (stateless). Use a non-zero
+    # value (e.g. 10m or 24h) to resume subscriptions and queued QoS 1/2 messages
+    # when reconnecting.
+    session_expiry_interval="{{ integration.mqtt.session_expiry_interval }}"
 
     # Client ID
     #

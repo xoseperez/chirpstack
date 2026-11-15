@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-import { Route, Routes, Link, useParams, useNavigate } from "react-router-dom";
+import { Route, Routes, Link, useParams, useNavigate } from "react-router";
 
 import { Space, Breadcrumb, Card, Button } from "antd";
 

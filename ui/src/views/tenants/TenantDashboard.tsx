@@ -1,5 +1,5 @@
 import { ReactElement, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 
 import { presetPalettes } from "@ant-design/colors";
 import { Card, Col, Row, Space, Empty } from "antd";

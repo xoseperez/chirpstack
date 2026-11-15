@@ -1,4 +1,4 @@
-import { Routes, Route, Link, useNavigate, useLocation } from "react-router-dom";
+import { Routes, Route, Link, useNavigate, useLocation } from "react-router";
 
 import { Space, Breadcrumb, Menu, Card, Button } from "antd";
 

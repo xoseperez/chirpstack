@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 
 import type { Gateway } from "@chirpstack/chirpstack-api-grpc-web/api/gateway_pb";
 import { UpdateGatewayRequest } from "@chirpstack/chirpstack-api-grpc-web/api/gateway_pb";

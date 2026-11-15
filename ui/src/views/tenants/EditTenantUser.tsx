@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router";
 
 import { Space, Breadcrumb, Card, Button } from "antd";
 
@@ -87,7 +87,7 @@ function EditTenantUser({ tenant }: { tenant: Tenant }) {
         ]}
       />
       <Card>
-        <TenantUserForm initialValues={tu} onFinish={onFinish} disabled={disabled} disableEmail />
+        <TenantUserForm initialValues={tu} onFinish={onFinish} disabled={disabled} tenant={tenant} disableEmail />
       </Card>
     </Space>
   );

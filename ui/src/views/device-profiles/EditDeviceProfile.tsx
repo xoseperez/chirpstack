@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, Link, useParams } from "react-router-dom";
+import { useNavigate, Link, useParams } from "react-router";
 
 import { Space, Breadcrumb, Card, Button } from "antd";
 
@@ -69,7 +69,8 @@ function EditDeviceProfile(props: IProps) {
   const disabled = !(
     SessionStore.isAdmin() ||
     SessionStore.isTenantAdmin(props.tenant.getId()) ||
-    SessionStore.isTenantDeviceAdmin(props.tenant.getId())
+    SessionStore.isTenantDeviceAdmin(props.tenant.getId()) ||
+    SessionStore.isDeviceProfileAdmin(dp.getId())
   );
 
   return (

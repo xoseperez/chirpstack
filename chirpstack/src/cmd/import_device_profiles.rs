@@ -69,6 +69,7 @@ pub struct Profile {
     pub abp: ProfileAbp,
     pub class_b: ProfileClassB,
     pub class_c: ProfileClassC,
+    pub app_layer_params: AppLayerParams,
 }
 
 impl Default for Profile {
@@ -86,6 +87,7 @@ impl Default for Profile {
             abp: ProfileAbp::default(),
             class_b: ProfileClassB::default(),
             class_c: ProfileClassC::default(),
+            app_layer_params: AppLayerParams::default(),
         }
     }
 }
@@ -112,6 +114,17 @@ pub struct ProfileClassB {
 #[serde(default)]
 pub struct ProfileClassC {
     pub timeout_secs: usize,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default)]
+pub struct AppLayerParams {
+    pub ts003_version: String,
+    pub ts003_f_port: usize,
+    pub ts004_version: String,
+    pub ts004_f_port: usize,
+    pub ts005_version: String,
+    pub ts005_f_port: usize,
 }
 
 pub async fn run(dir: &Path) -> Result<()> {
@@ -288,6 +301,26 @@ async fn handle_profile(
             })
         } else {
             None
+        },
+        app_layer_params: fields::AppLayerParams {
+            ts003_f_port: profile_conf.profile.app_layer_params.ts003_f_port as u8,
+            ts004_f_port: profile_conf.profile.app_layer_params.ts004_f_port as u8,
+            ts005_f_port: profile_conf.profile.app_layer_params.ts005_f_port as u8,
+            ts003_version: match profile_conf.profile.app_layer_params.ts003_version.as_ref() {
+                "1.0.0" => Some(fields::device_profile::Ts003Version::V100),
+                "2.0.0" => Some(fields::device_profile::Ts003Version::V200),
+                _ => None,
+            },
+            ts004_version: match profile_conf.profile.app_layer_params.ts004_version.as_ref() {
+                "1.0.0" => Some(fields::device_profile::Ts004Version::V100),
+                "2.0.0" => Some(fields::device_profile::Ts004Version::V200),
+                _ => None,
+            },
+            ts005_version: match profile_conf.profile.app_layer_params.ts005_version.as_ref() {
+                "1.0.0" => Some(fields::device_profile::Ts005Version::V100),
+                "2.0.0" => Some(fields::device_profile::Ts005Version::V200),
+                _ => None,
+            },
         },
         device_id: Some(device.id.into()),
         firmware_version: firmware.version.clone(),

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 
 import { Space, Form, Button, Row, Col, InputNumber, Alert } from "antd";
 

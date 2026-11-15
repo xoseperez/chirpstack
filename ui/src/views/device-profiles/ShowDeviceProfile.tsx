@@ -1,4 +1,4 @@
-import { useNavigate, useParams, Link } from "react-router-dom";
+import { useNavigate, useParams, Link } from "react-router";
 
 import { Space, Breadcrumb, Button, Card, Popconfirm } from "antd";
 

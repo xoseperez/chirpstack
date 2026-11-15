@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 
 import type { Tenant } from "@chirpstack/chirpstack-api-grpc-web/api/tenant_pb";
 import type { Application } from "@chirpstack/chirpstack-api-grpc-web/api/application_pb";
@@ -7,6 +7,7 @@ import { UpdateDeviceRequest } from "@chirpstack/chirpstack-api-grpc-web/api/dev
 
 import DeviceStore from "../../stores/DeviceStore";
 import DeviceForm from "./DeviceForm";
+import SessionStore from "../../stores/SessionStore";
 
 interface IProps {
   tenant: Tenant;
@@ -26,7 +27,16 @@ function EditDevice(props: IProps) {
     });
   };
 
-  return <DeviceForm initialValues={props.device} onFinish={onFinish} tenant={props.tenant} update />;
+  const disabled = !(
+    SessionStore.isAdmin() ||
+    SessionStore.isTenantAdmin(props.tenant.getId()) ||
+    SessionStore.isTenantDeviceAdmin(props.tenant.getId()) ||
+    SessionStore.isApplicationAdmin(props.device.getApplicationId())
+  );
+
+  return (
+    <DeviceForm initialValues={props.device} onFinish={onFinish} tenant={props.tenant} disabled={disabled} update />
+  );
 }
 
 export default EditDevice;

@@ -379,6 +379,8 @@ async fn update_gateway_metadata(ufs: &mut UplinkFrameSet) -> Result<()> {
                 {
                     ufs.gateway_private_up_map.insert(gw_id, false);
                     ufs.gateway_private_down_map.insert(gw_id, false);
+                    ufs.gateway_downlink_priority_map
+                        .insert(gw_id, conf.gateway.unknown_gateway_downlink_priority);
                     continue;
                 }
 

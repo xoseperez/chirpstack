@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 
 import { Space, Breadcrumb, Card } from "antd";
 
@@ -31,6 +31,7 @@ function CreateGateway(props: IProps) {
 
   const gateway = new Gateway();
   gateway.setStatsInterval(30);
+  gateway.setDownlinkPriority(10);
 
   return (
     <Space orientation="vertical" style={{ width: "100%" }} size="large">

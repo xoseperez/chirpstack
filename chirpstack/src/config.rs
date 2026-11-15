@@ -140,6 +140,7 @@ pub struct Gateway {
     pub ca_cert: String,
     pub ca_key: String,
     pub allow_unknown_gateways: bool,
+    pub unknown_gateway_downlink_priority: u32,
     #[serde(with = "humantime_serde")]
     pub rx_timestamp_max_drift: Duration,
     pub device_gateway_mapping_history_uplinks: usize,
@@ -152,6 +153,7 @@ impl Default for Gateway {
             ca_cert: "".to_string(),
             ca_key: "".to_string(),
             allow_unknown_gateways: false,
+            unknown_gateway_downlink_priority: 10,
             rx_timestamp_max_drift: Duration::from_secs(30),
             device_gateway_mapping_history_uplinks: 1,
         }
@@ -303,6 +305,8 @@ pub struct MqttIntegration {
     pub password: String,
     pub qos: usize,
     pub clean_session: bool,
+    #[serde(with = "humantime_serde")]
+    pub session_expiry_interval: Duration,
     pub client_id: String,
     pub ca_cert: String,
     pub tls_cert: String,
@@ -326,6 +330,7 @@ impl Default for MqttIntegration {
             password: "".into(),
             qos: 0,
             clean_session: false,
+            session_expiry_interval: Duration::from_secs(0),
             client_id: "".into(),
             ca_cert: "".into(),
             tls_cert: "".into(),
@@ -765,6 +770,8 @@ pub struct GatewayBackendMqtt {
     pub password: String,
     pub qos: usize,
     pub clean_session: bool,
+    #[serde(with = "humantime_serde")]
+    pub session_expiry_interval: Duration,
     pub client_id: String,
     pub ca_cert: String,
     pub tls_cert: String,
@@ -787,6 +794,7 @@ impl Default for GatewayBackendMqtt {
             password: "".into(),
             qos: 0,
             clean_session: false,
+            session_expiry_interval: Duration::from_secs(0),
             client_id: "".into(),
             ca_cert: "".into(),
             tls_cert: "".into(),
@@ -938,6 +946,7 @@ pub fn get_region_gateway(region_id: &str) -> Result<RegionGateway> {
 
 pub fn get_required_snr_for_sf(sf: u8) -> Result<f32> {
     Ok(match sf {
+        5 => -2.5,
         6 => -5.0,
         7 => -7.5,
         8 => -10.0,

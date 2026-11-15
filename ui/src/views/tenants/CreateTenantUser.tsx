@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 
 import { Space, Breadcrumb, Card } from "antd";
 
@@ -45,7 +45,7 @@ function CreateTenantUser({ tenant }: { tenant: Tenant }) {
         title="Add tenant user"
       />
       <Card>
-        <TenantUserForm initialValues={tu} onFinish={onFinish} />
+        <TenantUserForm initialValues={tu} onFinish={onFinish} tenant={tenant} />
       </Card>
     </Space>
   );
