@@ -65,7 +65,9 @@ jobs:
   dist:
     needs: tests
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Publishing needs upstream's AWS and Docker Hub credentials. Forks build
+    # their releases with fork-release.yml instead.
+    if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'chirpstack/chirpstack'
     strategy:
       matrix:
         database:
@@ -164,3 +166,12 @@ jobs:
       -
         name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
+
+  # Forks publish their own v<upstream version>-r<n> releases. Depending on the
+  # tests job means release assets are only built once all tests have passed.
+  fork-release:
+    needs: tests
+    if: github.repository != 'chirpstack/chirpstack' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-r')
+    permissions:
+      contents: write
+    uses: ./.github/workflows/fork-release.yml
