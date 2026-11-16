@@ -1,20 +1,23 @@
 use std::str::FromStr;
+use std::time::Duration;
 
 use bytes::Bytes;
 use chrono::Utc;
 use httpmock::prelude::*;
 use prost::Message;
+use tokio::time::sleep;
 use uuid::Uuid;
 
+use super::assert;
 use crate::api::backend as backend_api;
 use crate::backend::{joinserver, roaming};
 use crate::gateway::backend as gateway_backend;
 use crate::storage::{
     application,
     device::{self, DeviceClass},
-    device_profile, device_queue, gateway, tenant,
+    device_profile, device_queue, gateway, reset_redis, tenant,
 };
-use crate::{config, test, uplink};
+use crate::{config, integration, test, uplink};
 use chirpstack_api::{common, gw, internal};
 use lrwn::region::CommonName;
 use lrwn::{AES128Key, EUI64, NetID};
@@ -165,6 +168,241 @@ async fn test_fns_uplink() {
     sns_pr_start_req_mock.delete();
 
     joinserver::reset().await;
+}
+
+#[tokio::test]
+async fn test_fns_uplink_check_local_session_first() {
+    let _guard = test::prepare().await;
+
+    let sns_mock = MockServer::start();
+
+    let mut conf = (*config::get()).clone();
+
+    // Set NetID.
+    conf.network.net_id = NetID::from_str("000202").unwrap();
+
+    // Look up a local device-session before treating a DevAddr outside our
+    // NetID as a roaming device.
+    conf.roaming.check_local_session_first = true;
+
+    // Set roaming agreement.
+    conf.roaming.servers.push(config::RoamingServer {
+        net_id: NetID::from_str("000505").unwrap(),
+        server: sns_mock.url("/"),
+        ..Default::default()
+    });
+
+    config::set(conf);
+    roaming::setup().await.unwrap();
+
+    integration::set_mock().await;
+    integration::mock::reset().await;
+    gateway_backend::set_backend("eu868", Box::new(gateway_backend::mock::Backend {})).await;
+    gateway_backend::mock::reset().await;
+
+    let t = tenant::create(tenant::Tenant {
+        name: "tenant".into(),
+        can_have_gateways: true,
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+
+    let gw = gateway::create(gateway::Gateway {
+        name: "gateway".into(),
+        tenant_id: t.id,
+        gateway_id: EUI64::from_str("0102030405060708").unwrap(),
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+
+    let app = application::create(application::Application {
+        name: "app".into(),
+        tenant_id: t.id,
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+
+    let dp = device_profile::create(device_profile::DeviceProfile {
+        name: "dp".into(),
+        tenant_id: Some(t.id),
+        region: lrwn::region::CommonName::EU868,
+        mac_version: lrwn::region::MacVersion::LORAWAN_1_0_4,
+        reg_params_revision: lrwn::region::Revision::RP002_1_0_3,
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+
+    // Both DevAddrs belong to the roaming partner's NetID. The first one is used
+    // by a device provisioned on this network, the second one is unknown here.
+    let partner_prefix = NetID::from_str("000505").unwrap().dev_addr_prefix();
+    let mut local_dev_addr = lrwn::DevAddr::from_be_bytes([0, 0, 0, 1]);
+    local_dev_addr.set_dev_addr_prefix(partner_prefix);
+    let mut unknown_dev_addr = lrwn::DevAddr::from_be_bytes([0, 0, 0, 2]);
+    unknown_dev_addr.set_dev_addr_prefix(partner_prefix);
+
+    let dev = device::create(device::Device {
+        name: "device".into(),
+        application_id: app.id,
+        device_profile_id: dp.id,
+        dev_eui: EUI64::from_be_bytes([2, 2, 3, 4, 5, 6, 7, 8]),
+        enabled_class: DeviceClass::A,
+        dev_addr: Some(local_dev_addr),
+        f_cnt_up: 8,
+        device_session: Some(
+            internal::DeviceSession {
+                mac_version: common::MacVersion::Lorawan104.into(),
+                dev_addr: local_dev_addr.to_vec(),
+                f_nwk_s_int_key: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+                s_nwk_s_int_key: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+                nwk_s_enc_key: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+                app_s_key: Some(common::KeyEnvelope {
+                    kek_label: "".into(),
+                    aes_key: vec![16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1],
+                }),
+                n_f_cnt_down: 5,
+                enabled_uplink_channel_indices: vec![0, 1, 2],
+                rx1_delay: 1,
+                rx2_frequency: 869525000,
+                region_config_id: "eu868".into(),
+                ..Default::default()
+            }
+            .into(),
+        ),
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+
+    let ds = dev.get_device_session().unwrap();
+
+    let rx_info = gw::UplinkRxInfo {
+        gateway_id: gw.gateway_id.to_string(),
+        gw_time: Some(Utc::now().into()),
+        location: Some(Default::default()),
+        ..Default::default()
+    };
+
+    let mut tx_info = gw::UplinkTxInfo {
+        frequency: 868100000,
+        ..Default::default()
+    };
+    uplink::helpers::set_uplink_modulation("eu868", &mut tx_info, 0).unwrap();
+
+    // Any PRStartReq reaching the roaming partner means the uplink was forwarded.
+    let mut sns_pr_start_req_mock = sns_mock.mock(|when, then| {
+        when.method(POST).path("/");
+
+        then.json_body_obj(&backend::PRStartAnsPayload {
+            base: backend::BasePayloadResult {
+                base: backend::BasePayload {
+                    receiver_id: vec![0, 2, 2],
+                    sender_id: vec![0, 5, 5],
+                    message_type: backend::MessageType::PRStartAns,
+                    transaction_id: 1234,
+                    ..Default::default()
+                },
+                result: backend::ResultPayload {
+                    result_code: backend::ResultCode::Success,
+                    ..Default::default()
+                },
+            },
+            ..Default::default()
+        })
+        .status(200);
+    });
+
+    // Uplink from the local device: handled locally, not forwarded.
+    let mut phy = unconfirmed_data_up(local_dev_addr, 8);
+    phy.set_uplink_data_mic(
+        lrwn::MACVersion::LoRaWAN1_0,
+        0,
+        0,
+        0,
+        &AES128Key::from_slice(&ds.f_nwk_s_int_key).unwrap(),
+        &AES128Key::from_slice(&ds.s_nwk_s_int_key).unwrap(),
+    )
+    .unwrap();
+    simulate_uplink(&phy, &tx_info, &rx_info).await;
+
+    sns_pr_start_req_mock.assert_calls(0);
+    assert::f_cnt_up(dev.dev_eui, 9)().await;
+
+    // Integration events are handled async.
+    sleep(Duration::from_millis(100)).await;
+    let up = integration::mock::get_uplink_event()
+        .await
+        .expect("uplink event for the local device");
+    assert_eq!(dev.dev_eui.to_string(), up.device_info.unwrap().dev_eui);
+
+    // Same DevAddr, but the MIC does not match the local device-session: the
+    // uplink may belong to the partner's device using that DevAddr, so it is
+    // forwarded and the local frame-counter is left untouched.
+    reset_redis().await.unwrap();
+    simulate_uplink(&unconfirmed_data_up(local_dev_addr, 9), &tx_info, &rx_info).await;
+
+    sns_pr_start_req_mock.assert_calls(1);
+    assert::f_cnt_up(dev.dev_eui, 9)().await;
+    assert::no_uplink_event()().await;
+
+    // DevAddr without a local device-session: forwarded.
+    reset_redis().await.unwrap();
+    simulate_uplink(
+        &unconfirmed_data_up(unknown_dev_addr, 1),
+        &tx_info,
+        &rx_info,
+    )
+    .await;
+
+    sns_pr_start_req_mock.assert_calls(2);
+    assert::no_uplink_event()().await;
+
+    sns_pr_start_req_mock.delete();
+    roaming::reset().await;
+}
+
+/// Unconfirmed uplink without payload. The MIC is a placeholder: set it with
+/// set_uplink_data_mic when the uplink must validate against a device-session.
+fn unconfirmed_data_up(dev_addr: lrwn::DevAddr, f_cnt: u32) -> lrwn::PhyPayload {
+    lrwn::PhyPayload {
+        mhdr: lrwn::MHDR {
+            f_type: lrwn::FType::UnconfirmedDataUp,
+            major: lrwn::Major::LoRaWANR1,
+        },
+        payload: lrwn::Payload::MACPayload(lrwn::MACPayload {
+            fhdr: lrwn::FHDR {
+                devaddr: dev_addr,
+                f_ctrl: Default::default(),
+                f_cnt,
+                f_opts: lrwn::MACCommandSet::new(vec![]),
+            },
+            f_port: None,
+            frm_payload: None,
+        }),
+        mic: Some([1, 2, 3, 4]),
+    }
+}
+
+async fn simulate_uplink(
+    phy: &lrwn::PhyPayload,
+    tx_info: &gw::UplinkTxInfo,
+    rx_info: &gw::UplinkRxInfo,
+) {
+    uplink::handle_uplink(
+        CommonName::EU868,
+        "eu868",
+        Uuid::new_v4(),
+        gw::UplinkFrameSet {
+            phy_payload: phy.to_vec().unwrap(),
+            tx_info: Some(tx_info.clone()),
+            rx_info: vec![rx_info.clone()],
+        },
+    )
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
