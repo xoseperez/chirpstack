@@ -123,6 +123,23 @@ pub fn run() {
   # instance.
   cluster={{ redis.cluster }}
 
+  # Redis Sentinel master name.
+  #
+  # Set this to the name of the Sentinel-monitored master when the provided
+  # URLs are pointing to Redis Sentinel instances (use rediss:// to also
+  # secure the connection to the master). ChirpStack will then ask
+  # Sentinel for the current master address and reconnect after a failover.
+  # The server URLs must not contain a database index; use key_prefix to
+  # separate keys instead. Leave empty when not using Sentinel.
+  master_name="{{ redis.master_name }}"
+
+  # Redis password (Sentinel only).
+  #
+  # Sentinel only returns the ip:port of the master, so credentials in the
+  # server URLs are not forwarded to the master node. Set the password of
+  # the Redis master here when using Sentinel with authentication.
+  password="{{ redis.password }}"
+
   # Key prefix.
   #
   # A key prefix can be used to avoid key collisions when multiple deployments
@@ -431,6 +448,27 @@ pub fn run() {
   #
   # This defines the TTL of the Redis Stream key.
   per_device_event_log_ttl="{{ monitoring.per_device_event_log_ttl }}"
+
+  #  # Gateway frame-log read batch size.
+  #
+  # Maximum number of gateway frame-log entries returned by each XREAD query.
+  # This controls the read batch size, not how many gateway frames Redis retains.
+  # Recommended to set this to a value that is equal or smaller than the gateway's max log history
+  gateway_frame_log_read_batch_size="{{ monitoring.gateway_frame_log_read_batch_size }}"
+
+  # Device frame-log read batch size.
+  #
+  # Maximum number of device frame-log entries returned by each XREAD query.
+  # This controls the read batch size, not how many device frames Redis retains.
+  # Recommended to set this to a value that is equal or smaller than the device's max log history.
+  device_frame_log_read_batch_size="{{ monitoring.device_frame_log_read_batch_size }}"
+
+  # Device event-log read batch size.
+  #
+  # Maximum number of device event-log entries returned by each XREAD query.
+  # This controls the read batch size, not how many device events Redis retains.
+  # Recommended to set this to a value that is equal or smaller than the device's max log history
+  device_event_log_read_batch_size="{{ monitoring.device_event_log_read_batch_size }}"
 
 
 # Global integration related configuration.

@@ -13,6 +13,28 @@ use tracing::{error, info};
 
 use crate::config;
 
+// Returns the future of a transaction which first reads rows and then writes based on what
+// it has read. Usage: write_transaction!(conn, ReturnType, async |c| { ... }).await
+//
+// With PostgreSQL this is a regular transaction, in which the callback locks the rows it reads
+// using SELECT ... FOR UPDATE. SQLite does not have row-level locks and a regular (deferred)
+// transaction only acquires the write lock on its first write. If an other connection has
+// written in the meantime, this write fails immediately with SQLITE_BUSY (database is locked),
+// without invoking the busy handler. Therefore with SQLite, the transaction is started with
+// BEGIN IMMEDIATE, which acquires the write lock up-front, waiting for it as configured by
+// busy_timeout.
+macro_rules! write_transaction {
+    ($conn:expr, $r:ty, $callback:expr) => {{
+        #[cfg(feature = "postgres")]
+        use diesel_async::AsyncConnection as _;
+        #[cfg(feature = "postgres")]
+        let fut = $conn.transaction::<$r, Error, _>($callback);
+        #[cfg(feature = "sqlite")]
+        let fut = $conn.immediate_transaction::<$r, Error, _>($callback);
+        fut
+    }};
+}
+
 pub mod api_key;
 pub mod application;
 pub mod device;
@@ -74,11 +96,13 @@ pub use sqlite::{AsyncSqlitePoolConnection as AsyncDbPoolConnection, get_async_d
 pub enum AsyncRedisPool {
     Client(deadpool_redis::Pool),
     ClusterClient(deadpool_redis::cluster::Pool),
+    SentinelClient(deadpool_redis::sentinel::Pool),
 }
 
 pub enum AsyncRedisPoolConnection {
     Client(deadpool_redis::Connection),
     ClusterClient(deadpool_redis::cluster::Connection),
+    SentinelClient(deadpool_redis::sentinel::Connection),
 }
 
 impl ConnectionLike for AsyncRedisPoolConnection {
@@ -89,6 +113,7 @@ impl ConnectionLike for AsyncRedisPoolConnection {
         match self {
             AsyncRedisPoolConnection::Client(v) => v.req_packed_command(cmd),
             AsyncRedisPoolConnection::ClusterClient(v) => v.req_packed_command(cmd),
+            AsyncRedisPoolConnection::SentinelClient(v) => v.req_packed_command(cmd),
         }
     }
     fn req_packed_commands<'a>(
@@ -100,12 +125,16 @@ impl ConnectionLike for AsyncRedisPoolConnection {
         match self {
             AsyncRedisPoolConnection::Client(v) => v.req_packed_commands(cmd, offset, count),
             AsyncRedisPoolConnection::ClusterClient(v) => v.req_packed_commands(cmd, offset, count),
+            AsyncRedisPoolConnection::SentinelClient(v) => {
+                v.req_packed_commands(cmd, offset, count)
+            }
         }
     }
     fn get_db(&self) -> i64 {
         match self {
             AsyncRedisPoolConnection::Client(v) => v.get_db(),
             AsyncRedisPoolConnection::ClusterClient(v) => v.get_db(),
+            AsyncRedisPoolConnection::SentinelClient(v) => v.get_db(),
         }
     }
 }
@@ -130,6 +159,9 @@ pub async fn setup() -> Result<()> {
             .max_size(conf.redis.max_open_connections as usize)
             .build()?;
         set_async_redis_pool(AsyncRedisPool::ClusterClient(pool)).await;
+    } else if !conf.redis.master_name.is_empty() {
+        let pool = sentinel_pool(&conf.redis)?;
+        set_async_redis_pool(AsyncRedisPool::SentinelClient(pool)).await;
     } else {
         let pool = deadpool_redis::Config::from_url(conf.redis.servers[0].clone())
             .builder()?
@@ -166,6 +198,9 @@ pub async fn get_async_redis_conn() -> Result<AsyncRedisPoolConnection> {
         AsyncRedisPool::Client(v) => AsyncRedisPoolConnection::Client(v.get().await?),
         AsyncRedisPool::ClusterClient(v) => {
             AsyncRedisPoolConnection::ClusterClient(v.clone().get().await?)
+        }
+        AsyncRedisPool::SentinelClient(v) => {
+            AsyncRedisPoolConnection::SentinelClient(v.get().await?)
         }
     };
 
@@ -224,6 +259,58 @@ pub async fn run_db_migrations() -> Result<()> {
     Ok(())
 }
 
+// Sentinel returns only ip:port for the master, so TLS mode and auth
+// credentials must be forwarded explicitly via node_connection_info.
+fn sentinel_node_connection_info(
+    conf: &config::Redis,
+) -> Result<deadpool_redis::sentinel::SentinelNodeConnectionInfo> {
+    use redis::IntoConnectionInfo;
+
+    let mut tls_mode = None;
+    for server in &conf.servers {
+        let info = server.as_str().into_connection_info()?;
+
+        // The Sentinel URLs are used as-is to connect to the Sentinel nodes,
+        // which do not support SELECT. Reject a database index early with a
+        // clear error instead of failing on the first Redis command.
+        if info.redis_settings().db() != 0 {
+            return Err(anyhow!(
+                "Redis Sentinel URLs must not contain a database index ({}), use key_prefix to separate keys",
+                server
+            ));
+        }
+
+        // Use TLS towards the master when the Sentinel nodes use TLS (rediss://).
+        if matches!(info.addr(), redis::ConnectionAddr::TcpTls { .. }) {
+            tls_mode = Some(deadpool_redis::sentinel::TlsMode::Secure);
+        }
+    }
+
+    Ok(deadpool_redis::sentinel::SentinelNodeConnectionInfo {
+        tls_mode,
+        redis_connection_info: Some(deadpool_redis::RedisConnectionInfo {
+            password: if conf.password.is_empty() {
+                None
+            } else {
+                Some(conf.password.clone())
+            },
+            ..Default::default()
+        }),
+    })
+}
+
+fn sentinel_pool(conf: &config::Redis) -> Result<deadpool_redis::sentinel::Pool> {
+    Ok(deadpool_redis::sentinel::Config::from_urls(
+        conf.servers.clone(),
+        conf.master_name.clone(),
+        deadpool_redis::sentinel::SentinelServerType::Master,
+    )
+    .with_node_connection_info(Some(sentinel_node_connection_info(conf)?))
+    .builder()?
+    .max_size(conf.max_open_connections as usize)
+    .build()?)
+}
+
 async fn set_async_redis_pool(p: AsyncRedisPool) {
     let mut pool_w = ASYNC_REDIS_POOL.write().await;
     *pool_w = Some(p);
@@ -278,5 +365,91 @@ mod test {
             "foobar:lora:test:key",
             redis_key("lora:test:key".to_string())
         );
+    }
+
+    fn sentinel_conf(servers: Vec<&str>, password: &str) -> config::Redis {
+        config::Redis {
+            servers: servers.into_iter().map(|s| s.to_string()).collect(),
+            master_name: "mymaster".to_string(),
+            password: password.to_string(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_sentinel_node_connection_info_no_password() {
+        let info =
+            sentinel_node_connection_info(&sentinel_conf(vec!["redis://127.0.0.1:26379"], ""))
+                .unwrap();
+        assert!(info.tls_mode.is_none());
+        assert_eq!(None, info.redis_connection_info.unwrap().password);
+    }
+
+    #[test]
+    fn test_sentinel_node_connection_info_password_forwarded() {
+        let info = sentinel_node_connection_info(&sentinel_conf(
+            vec!["redis://127.0.0.1:26379"],
+            "s3cret",
+        ))
+        .unwrap();
+        assert_eq!(
+            Some("s3cret".to_string()),
+            info.redis_connection_info.unwrap().password
+        );
+    }
+
+    #[test]
+    fn test_sentinel_node_connection_info_tls_from_rediss_url() {
+        let info = sentinel_node_connection_info(&sentinel_conf(
+            vec!["redis://127.0.0.1:26379", "rediss://127.0.0.1:26380"],
+            "",
+        ))
+        .unwrap();
+        assert!(matches!(
+            info.tls_mode,
+            Some(deadpool_redis::sentinel::TlsMode::Secure)
+        ));
+    }
+
+    #[test]
+    fn test_sentinel_node_connection_info_tls_scheme_case_insensitive() {
+        let info =
+            sentinel_node_connection_info(&sentinel_conf(vec!["REDISS://127.0.0.1:26379"], ""))
+                .unwrap();
+        assert!(matches!(
+            info.tls_mode,
+            Some(deadpool_redis::sentinel::TlsMode::Secure)
+        ));
+    }
+
+    #[test]
+    fn test_sentinel_node_connection_info_rejects_db_index() {
+        let err = sentinel_node_connection_info(&sentinel_conf(
+            vec!["redis://127.0.0.1:26379", "redis://127.0.0.1:26380/1"],
+            "",
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("key_prefix"));
+    }
+
+    #[test]
+    fn test_sentinel_pool_rejects_empty_server_list() {
+        assert!(sentinel_pool(&sentinel_conf(vec![], "")).is_err());
+    }
+
+    #[test]
+    fn test_sentinel_pool_builds_without_connecting() {
+        // Building the pool must not require a reachable Sentinel.
+        let pool = sentinel_pool(&sentinel_conf(
+            vec!["redis://127.0.0.1:1", "redis://127.0.0.1:2"],
+            "s3cret",
+        ))
+        .unwrap();
+        assert_eq!(100, pool.status().max_size);
+    }
+
+    #[test]
+    fn test_sentinel_pool_rejects_invalid_url() {
+        assert!(sentinel_pool(&sentinel_conf(vec!["not a url"], "")).is_err());
     }
 }

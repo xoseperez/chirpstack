@@ -74,7 +74,8 @@ impl Flow {
                         max_retry_count: match next_job {
                             FuotaJob::McGroupSetup
                             | FuotaJob::FragSessionSetup
-                            | FuotaJob::McSession => self.fuota_deployment.unicast_max_retry_count,
+                            | FuotaJob::McSession
+                            | FuotaJob::FragStatus => self.fuota_deployment.unicast_max_retry_count,
                             _ => 0,
                         },
                         scheduler_run_after,
@@ -203,7 +204,7 @@ impl Flow {
         // Filter on devices that have not completed the McGroupSetup.
         let fuota_devices: Vec<fuota::FuotaDeploymentDevice> = fuota_devices
             .into_iter()
-            .filter(|d| d.mc_group_setup_completed_at.is_none())
+            .filter(|d| d.mc_group_setup_completed_at.is_none() && d.error_msg.is_empty())
             .collect();
 
         // Proceed with next step after reaching the max attempts.
@@ -228,8 +229,10 @@ impl Flow {
             return Ok(Some((FuotaJob::FragSessionSetup, Utc::now())));
         }
 
-        info!("Sending McGroupSetupReq commands to devices");
-        self.job.attempt_count += 1;
+        if !fuota_devices.is_empty() {
+            info!("Sending McGroupSetupReq commands to devices");
+            self.job.attempt_count += 1;
+        }
 
         for fuota_dev in &fuota_devices {
             let dev_keys = device_keys::get(&fuota_dev.dev_eui).await?;
@@ -332,15 +335,17 @@ impl Flow {
         let fuota_devices = fuota::get_devices(self.job.fuota_deployment_id.into(), -1, 0).await?;
         let fuota_devices_completed_mc_group_setup_count = fuota_devices
             .iter()
-            .filter(|d| d.mc_group_setup_completed_at.is_some())
+            .filter(|d| d.mc_group_setup_completed_at.is_some() && d.error_msg.is_empty())
             .count();
 
         // Filter on devices that have completed the previous step, but not yet the FragSessionSetup.
+        // Also make sure there is no error_msg.
         let fuota_devices: Vec<fuota::FuotaDeploymentDevice> = fuota_devices
             .into_iter()
             .filter(|d| {
                 d.mc_group_setup_completed_at.is_some()
                     && d.frag_session_setup_completed_at.is_none()
+                    && d.error_msg.is_empty()
             })
             .collect();
 
@@ -365,9 +370,6 @@ impl Flow {
             return Ok(Some((FuotaJob::McSession, Utc::now())));
         }
 
-        info!("Sending FragSessionSetupReq commands to devices");
-        self.job.attempt_count += 1;
-
         if fuota_devices_completed_mc_group_setup_count == 0 {
             self.job.error_msg = "There are no devices available to complete this step".into();
             return Ok(Some((FuotaJob::DeleteMcGroup, Utc::now())));
@@ -378,6 +380,11 @@ impl Flow {
             (self.fuota_deployment.payload.len() as f32 / fragment_size as f32).ceil() as usize;
         let padding =
             (fragment_size - (self.fuota_deployment.payload.len() % fragment_size)) % fragment_size;
+
+        if !fuota_devices.is_empty() {
+            info!("Sending FragSessionSetupReq commands to devices");
+            self.job.attempt_count += 1;
+        }
 
         for fuota_dev in &fuota_devices {
             let descriptor = {
@@ -491,14 +498,17 @@ impl Flow {
         let fuota_devices = fuota::get_devices(self.job.fuota_deployment_id.into(), -1, 0).await?;
         let fuota_devices_completed_frag_session_setup_count = fuota_devices
             .iter()
-            .filter(|d| d.frag_session_setup_completed_at.is_some())
+            .filter(|d| d.frag_session_setup_completed_at.is_some() && d.error_msg.is_empty())
             .count();
 
         // Filter on devices that have completed the previous step, but not yet the McSession.
+        // Also make sure error_msg is empty.
         let fuota_devices: Vec<fuota::FuotaDeploymentDevice> = fuota_devices
             .into_iter()
             .filter(|d| {
-                d.frag_session_setup_completed_at.is_some() && d.mc_session_completed_at.is_none()
+                d.frag_session_setup_completed_at.is_some()
+                    && d.mc_session_completed_at.is_none()
+                    && d.error_msg.is_empty()
             })
             .collect();
 
@@ -529,8 +539,10 @@ impl Flow {
             )));
         }
 
-        info!("Sending McClassB/McClassCSessionReq commands to devices");
-        self.job.attempt_count += 1;
+        if !fuota_devices.is_empty() {
+            info!("Sending McClassB/McClassCSessionReq commands to devices");
+            self.job.attempt_count += 1;
+        }
 
         if fuota_devices_completed_frag_session_setup_count == 0 {
             self.job.error_msg = "There are no devices available to complete this step".into();
@@ -698,10 +710,11 @@ impl Flow {
 
         let fuota_devices = fuota::get_devices(self.job.fuota_deployment_id.into(), -1, 0).await?;
 
-        // Filter on devices that have completed the previous step.
+        // Filter on devices that have completed the previous step and that do not have an
+        // error_msg.
         let fuota_devices: Vec<fuota::FuotaDeploymentDevice> = fuota_devices
             .into_iter()
-            .filter(|d| d.mc_session_completed_at.is_some())
+            .filter(|d| d.mc_session_completed_at.is_some() && d.error_msg.is_empty())
             .collect();
 
         if fuota_devices.is_empty() {
@@ -799,14 +812,19 @@ impl Flow {
         let fuota_devices = fuota::get_devices(self.job.fuota_deployment_id.into(), -1, 0).await?;
         let fuota_devices_completed_mc_session_count = fuota_devices
             .iter()
-            .filter(|d| d.mc_session_completed_at.is_some())
+            .filter(|d| d.mc_session_completed_at.is_some() && d.error_msg.is_empty())
             .count();
 
         // Filter on devices that have completed the multicast-session setup but
         // not yet responded to the FragSessionStatusReq.
+        // Also make sure there is no error_msg.
         let fuota_devices: Vec<fuota::FuotaDeploymentDevice> = fuota_devices
             .into_iter()
-            .filter(|d| d.mc_session_completed_at.is_some() && d.frag_status_completed_at.is_none())
+            .filter(|d| {
+                d.mc_session_completed_at.is_some()
+                    && d.frag_status_completed_at.is_none()
+                    && d.error_msg.is_empty()
+            })
             .collect();
 
         // Proceed with next step after reaching the max attempts.
@@ -836,8 +854,10 @@ impl Flow {
             )));
         }
 
-        info!("Enqueue FragSessionStatusReq");
-        self.job.attempt_count += 1;
+        if !fuota_devices.is_empty() {
+            info!("Enqueue FragSessionStatusReq");
+            self.job.attempt_count += 1;
+        }
 
         if fuota_devices_completed_mc_session_count == 0 {
             self.job.error_msg = "There are no devices available to complete this step".into();
@@ -872,17 +892,39 @@ impl Flow {
             .await?;
         }
 
+        let now = Utc::now();
+        let multicast_session_end = self
+            .fuota_deployment
+            .multicast_session_end
+            .unwrap_or_else(Utc::now);
+
         if !fuota_devices.is_empty() {
-            // There are devices pending setup, we need to re-run this job.
-            let scheduler_run_after =
-                Utc::now() + TimeDelta::seconds(self.device_profile.uplink_interval as i64);
+            // There are devices pending setup, we need to re-run this job. There are two scheduling
+            // options:
+            // - Immediately after enqueuing the fragments, we enqueue the FragStatus as unicast
+            //   downlink (when the next Class-A uplink is after the multicast session).
+            // - After the multicast session has ended, we enqueue the FragStatus as unicast
+            //   downlink (e.g. for Class-B / -B devices in which case we want to avoid sending it
+            //   during the multicast session).
+            //
+            // In either case, we need to wait with a retry until after the multicast session has
+            // ended + the uplink_interval. In case we are already past the multicast_session_end
+            // time, we need to wait until now() + uplink_interval (applies to both cases).
+            let scheduler_run_after = if multicast_session_end > now {
+                multicast_session_end
+                    + TimeDelta::seconds(self.device_profile.uplink_interval as i64)
+            } else {
+                now + TimeDelta::seconds(self.device_profile.uplink_interval as i64)
+            };
             Ok(Some((FuotaJob::FragStatus, scheduler_run_after)))
         } else {
             Ok(Some((
                 FuotaJob::DeleteMcGroup,
-                self.fuota_deployment
-                    .multicast_session_end
-                    .unwrap_or_else(Utc::now),
+                if multicast_session_end > now {
+                    multicast_session_end
+                } else {
+                    now
+                },
             )))
         }
     }

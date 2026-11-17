@@ -78,6 +78,8 @@ impl Default for Postgresql {
 pub struct Redis {
     pub servers: Vec<String>,
     pub cluster: bool,
+    pub master_name: String,
+    pub password: String,
     pub key_prefix: String,
     pub max_open_connections: u32,
 }
@@ -87,6 +89,8 @@ impl Default for Redis {
         Redis {
             servers: vec!["redis://127.0.0.1/".into()],
             cluster: false,
+            master_name: "".into(),
+            password: "".into(),
             key_prefix: "".into(),
             max_open_connections: 100,
         }
@@ -261,6 +265,9 @@ pub struct Monitoring {
     pub per_device_event_log_max_history: usize,
     #[serde(with = "humantime_serde")]
     pub per_device_event_log_ttl: Duration,
+    pub gateway_frame_log_read_batch_size: usize,
+    pub device_frame_log_read_batch_size: usize,
+    pub device_event_log_read_batch_size: usize,
 }
 
 impl Default for Monitoring {
@@ -279,6 +286,9 @@ impl Default for Monitoring {
             per_gateway_frame_log_ttl: Duration::from_secs(60 * 60 * 24 * 31), // 31 days
             per_device_frame_log_ttl: Duration::from_secs(60 * 60 * 24 * 31),
             per_device_event_log_ttl: Duration::from_secs(60 * 60 * 24 * 31),
+            gateway_frame_log_read_batch_size: 10,
+            device_frame_log_read_batch_size: 10,
+            device_event_log_read_batch_size: 10,
         }
     }
 }
